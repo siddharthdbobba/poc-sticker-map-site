@@ -1,0 +1,60 @@
+---
+import Base from '../layouts/Base.astro';
+import StickerMapApp from '../components/StickerMapApp';
+
+// Public Google Sheet CSV (published to web). Set in .env / on the deploy host.
+const csvUrl = import.meta.env.PUBLIC_STICKER_CSV_URL ?? '';
+// Google Form for the "Submit your sighting" button.
+const formUrl = import.meta.env.PUBLIC_STICKER_FORM_URL ?? '';
+---
+
+<Base title="POC Sticker Map | Purdue Outing Club">
+  <main class="container page">
+    <header class="page-head">
+      <h1>🗺️ POC Sticker Map</h1>
+      <p class="lead">
+        Every pin marks a place a Purdue Outing Club sticker has made it to.
+        Click any pin to see the photo and story.
+      </p>
+    </header>
+
+    <StickerMapApp client:only="react" csvUrl={csvUrl}>
+      <div slot="fallback" class="map-skeleton"></div>
+    </StickerMapApp>
+
+    <div class="submit-cta">
+      <p>📍 Added a new POC sticker?</p>
+      <a
+        href={formUrl || '#'}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="poc-cta-button"
+      >
+        Submit your sighting →
+      </a>
+    </div>
+  </main>
+</Base>
+
+<style>
+  .page { padding: 2rem 1rem 3rem; }
+  .page-head {
+    border-top: 4px solid var(--accent);
+    padding-top: 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .page-head h1 {
+    font-size: clamp(1.9rem, 5vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+  }
+  .page-head .lead {
+    color: var(--muted);
+    max-width: 560px;
+    line-height: 1.6;
+  }
+  .submit-cta { margin-top: 1.75rem; text-align: center; }
+  .submit-cta p { color: var(--muted); margin-bottom: 0.75rem; font-size: 0.9rem; }
+</style>

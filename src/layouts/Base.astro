@@ -1,0 +1,100 @@
+---
+import '../styles/global.css';
+
+export interface Props {
+  title: string;
+  description?: string;
+}
+
+const {
+  title,
+  description = "Explore every corner of the world where a Purdue Outing Club sticker has landed.",
+} = Astro.props;
+
+const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : undefined;
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    {canonicalURL && <link rel="canonical" href={canonicalURL} />}
+
+    <!-- Open Graph -->
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- No-flash theme: set [data-theme] before first paint. Dark is the default
+         (matching the club site); an explicit user choice is remembered. -->
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          document.documentElement.dataset.theme =
+            stored === "light" || stored === "dark" ? stored : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+  </head>
+
+  <body>
+    <nav>
+      <div class="nav-inner">
+        <a class="nav-logo" href="/">
+          <span class="logo-badge">👣</span>
+          <span>POC Sticker Map</span>
+        </a>
+
+        <div class="nav-right">
+          <a class="nav-link" href="https://siddharthbobba.com" target="_blank" rel="noopener">← portfolio</a>
+          <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light/dark theme"></button>
+          <a class="btn-pill" href="https://www.purdueoutingclub.com/join" target="_blank" rel="noopener">Join ↗</a>
+        </div>
+      </div>
+    </nav>
+
+    <slot />
+
+    <footer>
+      <div class="container">
+        <p>
+          A <a class="nav-link" href="https://www.purdueoutingclub.com" target="_blank" rel="noopener">Purdue Outing Club</a>
+          project · map tiles © OpenTopoMap (CC-BY-SA)
+        </p>
+      </div>
+    </footer>
+
+    <!-- Theme toggle: flip [data-theme], persist, swap sun/moon icon. -->
+    <script is:inline>
+      (function () {
+        var btn = document.getElementById("theme-toggle");
+        if (!btn) return;
+        var SUN =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+        var MOON =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+        function render() {
+          // Dark mode → show sun (click to go light); light mode → show moon.
+          btn.innerHTML = document.documentElement.dataset.theme === "dark" ? SUN : MOON;
+        }
+        render();
+        btn.addEventListener("click", function () {
+          var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+          document.documentElement.dataset.theme = next;
+          try {
+            localStorage.setItem("theme", next);
+          } catch (e) {}
+          render();
+        });
+      })();
+    </script>
+  </body>
+</html>
