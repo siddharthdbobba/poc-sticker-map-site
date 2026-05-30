@@ -2,8 +2,12 @@
 import Base from '../layouts/Base.astro';
 import StickerMapApp from '../components/StickerMapApp';
 
-// Public Google Sheet CSV (published to web). Set in .env / on the deploy host.
-const csvUrl = import.meta.env.PUBLIC_STICKER_CSV_URL ?? '';
+// Public Google Sheet CSV (published to web). Override via PUBLIC_STICKER_CSV_URL
+// in .env / on the deploy host; falls back to the published club sheet so the
+// map works even when the host has no build-time env var set. (URL is public.)
+const DEFAULT_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/1aT5MWieAlBARzSs5c_vyPOp8ioqcWhhW8hA0i7zLlQg/gviz/tq?tqx=out:csv&gid=0';
+const csvUrl = import.meta.env.PUBLIC_STICKER_CSV_URL || DEFAULT_CSV_URL;
 // Google Form for the "Submit your sighting" button.
 const formUrl = import.meta.env.PUBLIC_STICKER_FORM_URL ?? '';
 ---
