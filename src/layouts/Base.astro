@@ -30,14 +30,21 @@ const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : unde
     <title>{title}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
-    <!-- No-flash theme: set [data-theme] before first paint. Dark is the default
-         (matching the club site); an explicit user choice is remembered. -->
+    <!-- No-flash theme: set [data-theme] before first paint. An explicit user
+         choice (localStorage) always wins; otherwise follow the OS via
+         prefers-color-scheme, falling back to dark (matching the club site). -->
     <script is:inline>
       (function () {
         try {
           var stored = localStorage.getItem("theme");
-          document.documentElement.dataset.theme =
-            stored === "light" || stored === "dark" ? stored : "dark";
+          if (stored === "light" || stored === "dark") {
+            document.documentElement.dataset.theme = stored;
+          } else {
+            var prefersLight =
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: light)").matches;
+            document.documentElement.dataset.theme = prefersLight ? "light" : "dark";
+          }
         } catch (e) {
           document.documentElement.dataset.theme = "dark";
         }
@@ -72,7 +79,8 @@ const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : unde
       </div>
     </footer>
 
-    <!-- Theme toggle: flip [data-theme], persist, swap sun/moon icon. -->
+    <!-- Theme toggle: flip [data-theme], persist, swap sun/moon icon.
+         With no explicit choice stored, the map tracks the OS theme live. -->
     <script is:inline>
       (function () {
         var btn = document.getElementById("theme-toggle");
@@ -94,6 +102,22 @@ const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : unde
           } catch (e) {}
           render();
         });
+        // Follow the OS theme live — but only until the user makes an explicit
+        // choice (a stored "theme" always wins).
+        if (window.matchMedia) {
+          var mq = window.matchMedia("(prefers-color-scheme: dark)");
+          var onSystemChange = function (e) {
+            var stored;
+            try {
+              stored = localStorage.getItem("theme");
+            } catch (_) {}
+            if (stored === "light" || stored === "dark") return;
+            document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+            render();
+          };
+          if (mq.addEventListener) mq.addEventListener("change", onSystemChange);
+          else if (mq.addListener) mq.addListener(onSystemChange); // Safari < 14
+        }
       })();
     </script>
   </body>
