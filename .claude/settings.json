@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-/Users/sbobba/projects/poc-sticker-map-site}\" || exit 0; [ -z \"$(git status --porcelain -- src astro.config.mjs wrangler.jsonc 2>/dev/null)\" ] && exit 0; npm run build > /tmp/sticker-map-build.log 2>&1 && exit 0; echo \"npm run build failed - fix the errors below:\"; tail -40 /tmp/sticker-map-build.log; exit 2",
+            "asyncRewake": true,
+            "timeout": 120,
+            "statusMessage": "Verifying build (astro build)...",
+            "rewakeSummary": "Build broke - astro build failed"
+          }
+        ]
+      }
+    ]
+  }
+}

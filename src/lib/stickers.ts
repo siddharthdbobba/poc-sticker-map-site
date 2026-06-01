@@ -7,7 +7,11 @@
  * dependency and no secret. This module is pure (no fetch, no env).
  *
  * Expected sheet columns (row 1 = headers, exact names matter):
- *   name | latitude | longitude | date | description | photo_url | placed_by
+ *   name | latitude | longitude | date | description | photo_url | placed_by | status
+ *
+ * `status` drives moderation: rows submitted via /submit are appended as
+ * "pending" and hidden from the map until someone sets the cell to "active".
+ * Rows with no/empty status are treated as active (so pre-existing data shows).
  */
 
 export interface StickerLocation {
@@ -19,6 +23,7 @@ export interface StickerLocation {
   description: string;
   photoUrl: string;
   placedBy: string;
+  status: string;
 }
 
 export function parseCSV(csv: string): StickerLocation[] {
@@ -47,10 +52,18 @@ export function parseCSV(csv: string): StickerLocation[] {
         description: row['description'] || '',
         photoUrl: row['photo_url'] || '',
         placedBy: row['placed_by'] || '',
+        status: row['status'] || '',
       };
     })
-    // Drop rows with invalid coordinates
-    .filter((loc) => !isNaN(loc.latitude) && !isNaN(loc.longitude));
+    // Drop rows with invalid coordinates, and hide submissions still pending
+    // review. Only an explicit "pending" status hides a row — empty/"active"/
+    // anything else stays visible, so existing rows without a status show.
+    .filter(
+      (loc) =>
+        !isNaN(loc.latitude) &&
+        !isNaN(loc.longitude) &&
+        loc.status.trim().toLowerCase() !== 'pending',
+    );
 }
 
 /** Handles quoted fields (e.g. descriptions with commas) */

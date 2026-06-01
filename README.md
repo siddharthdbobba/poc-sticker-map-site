@@ -31,16 +31,16 @@ Sheet columns (row 1 headers): `name, latitude, longitude, date, description, ph
 
 `/submit` lets anyone contribute a sighting: it downscales the photo in-browser,
 geocodes a typed place via Nominatim, and POSTs to `/api/submit`. That Worker route
-stores the photo in **R2** and appends a row to a **"Pending"** sheet tab via a small
-**Apps Script web app** (`apps-script/Code.gs`). The map only reads the Live tab
-(gid=0) — you approve a sighting by moving its row from Pending → Live.
+stores the photo in **R2** and appends a row to the data tab via a small **Apps Script
+web app** (`apps-script/Code.gs`) with `status = "pending"`. The map hides pending
+rows — you approve a sighting by changing its **`status`** cell to `active`.
 
 One-time setup:
 
 1. **R2 bucket:** `wrangler r2 bucket create poc-sticker-photos`
    (binding `PHOTOS` is already in `wrangler.jsonc`).
-2. **Pending tab:** add a tab named exactly `Pending` with the same header row as the
-   live tab.
+2. **`status` column:** add a `status` header to the data tab so it reads
+   `… | placed_by | status`. Leave existing rows blank (blank = active/visible).
 3. **Apps Script:** follow the steps at the top of `apps-script/Code.gs` to deploy the
    web app and get its `/exec` URL.
 4. **Secrets:**
@@ -49,8 +49,9 @@ One-time setup:
    wrangler secret put SHEET_WEBHOOK_TOKEN   # same value as TOKEN in Code.gs
    ```
 
-> Note: an uploaded photo is fetchable at its (unguessable) `/photos/<uuid>` URL as
-> soon as it's submitted — review gates the *map*, not the raw photo URL.
+> Note: review gates the **map**, not raw data. A pending row sits in the single
+> published tab, so its text and `/photos/<uuid>` URL are publicly fetchable before
+> approval — they're just filtered out of the map client-side.
 
 Bot protection (Cloudflare Turnstile) is a planned Phase 2; until then manual review
 is the guardrail.

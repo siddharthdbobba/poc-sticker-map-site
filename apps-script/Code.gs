@@ -2,15 +2,16 @@
  * POC Sticker Map — submission receiver (Google Apps Script web app).
  *
  * Bound to the sticker-map spreadsheet. Receives a JSON POST from the site's
- * /api/submit Worker and appends one row to the "Pending" tab. The map only
- * reads the Live tab (gid=0); you approve a sighting by moving its row from
- * Pending → Live.
+ * /api/submit Worker and appends one row to the data tab with status="pending".
+ * The map hides pending rows; you approve a sighting by changing its "status"
+ * cell to "active" (no row moving, no second tab).
  *
  * SETUP
  *  1. In the spreadsheet: Extensions → Apps Script. Paste this file.
  *  2. Set TOKEN below to a long random string.
- *  3. Make sure a tab named exactly "Pending" exists with the header row:
- *       name | latitude | longitude | date | description | photo_url | placed_by
+ *  3. Add a "status" column to the data tab's header row, so it reads:
+ *       name | latitude | longitude | date | description | photo_url | placed_by | status
+ *     (Leave existing rows' status blank — blank counts as active/visible.)
  *  4. Deploy → New deployment → type "Web app" →
  *       Execute as: Me   |   Who has access: Anyone
  *     Copy the resulting ".../exec" URL.
@@ -20,7 +21,8 @@
  */
 
 const TOKEN = 'CHANGE_ME_to_a_long_random_string'; // must equal SHEET_WEBHOOK_TOKEN
-const PENDING_SHEET = 'Pending';
+// Tab the map reads (the published gid=0 tab). Leave '' to use the first tab.
+const SHEET_NAME = '';
 
 function doPost(e) {
   try {
@@ -28,20 +30,34 @@ function doPost(e) {
     if (body.token !== TOKEN) {
       return jsonOut({ ok: false, error: 'forbidden' });
     }
-    const sheet = SpreadsheetApp.getActive().getSheetByName(PENDING_SHEET);
+
+    const ss = SpreadsheetApp.getActive();
+    const sheet = SHEET_NAME ? ss.getSheetByName(SHEET_NAME) : ss.getSheets()[0];
     if (!sheet) {
-      return jsonOut({ ok: false, error: 'Pending sheet not found' });
+      return jsonOut({ ok: false, error: 'target sheet not found' });
     }
-    // Column order must match the header row (and src/lib/stickers.ts).
-    sheet.appendRow([
-      body.name || '',
-      body.latitude,
-      body.longitude,
-      body.date || '',
-      body.description || '',
-      body.photo_url || '',
-      body.placed_by || '',
-    ]);
+
+    // Values keyed by normalized header name (matches src/lib/stickers.ts).
+    // New rows are always "pending"; the submitter cannot self-approve.
+    const values = {
+      name: body.name || '',
+      latitude: body.latitude,
+      longitude: body.longitude,
+      date: body.date || '',
+      description: body.description || '',
+      photo_url: body.photo_url || '',
+      placed_by: body.placed_by || '',
+      status: 'pending',
+    };
+
+    // Match columns by header name so order doesn't matter. A "status" column
+    // must exist (step 3) for moderation to take effect.
+    const headers = sheet
+      .getRange(1, 1, 1, sheet.getLastColumn())
+      .getValues()[0]
+      .map((h) => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+    sheet.appendRow(headers.map((h) => (h in values ? values[h] : '')));
+
     return jsonOut({ ok: true });
   } catch (err) {
     return jsonOut({ ok: false, error: String(err) });
