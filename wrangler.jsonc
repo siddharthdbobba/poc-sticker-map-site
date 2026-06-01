@@ -3,6 +3,10 @@
 	"compatibility_flags": ["global_fetch_strictly_public"],
 	"name": "poc-sticker-map-site",
 	"main": "@astrojs/cloudflare/entrypoints/server",
+	// Serve only from the custom domain (stickers.siddharthbobba.com); don't
+	// expose the worker at *.workers.dev or generate per-version preview URLs.
+	"workers_dev": false,
+	"preview_urls": false,
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS"
