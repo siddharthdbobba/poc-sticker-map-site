@@ -1,0 +1,19 @@
+{
+	"compatibility_date": "2026-06-01",
+	"compatibility_flags": ["global_fetch_strictly_public"],
+	"name": "poc-sticker-map-site",
+	"main": "@astrojs/cloudflare/entrypoints/server",
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS"
+	},
+	// Astro's Cloudflare adapter enables sessions by default and needs a KV
+	// namespace bound as SESSION. Pin the existing namespace id so deploys reuse
+	// it instead of trying to re-create it (which fails with KV error 10014).
+	"kv_namespaces": [
+		{ "binding": "SESSION", "id": "78ee889ec6564be0b4dd68ea686fb922" }
+	],
+	"observability": {
+		"enabled": true
+	}
+}
