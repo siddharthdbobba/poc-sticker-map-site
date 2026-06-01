@@ -1,0 +1,42 @@
+---
+import Base from '../layouts/Base.astro';
+import SubmitForm from '../components/SubmitForm';
+---
+
+<Base title="Submit a sighting | POC Sticker Map">
+  <main class="container page">
+    <header class="page-head">
+      <h1>📍 Submit a sighting</h1>
+      <p class="lead">
+        Spotted a Purdue Outing Club sticker in the wild? Add it to the map —
+        snap a photo, drop the location, and tell us the story.
+      </p>
+    </header>
+
+    <div class="form-wrap">
+      <SubmitForm client:only="react" />
+    </div>
+  </main>
+</Base>
+
+<style>
+  .page { padding: 2rem 1rem 3rem; }
+  .page-head {
+    border-top: 4px solid var(--accent);
+    padding-top: 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .page-head h1 {
+    font-size: clamp(1.9rem, 5vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+  }
+  .page-head .lead {
+    color: var(--muted);
+    max-width: 560px;
+    line-height: 1.6;
+  }
+  .form-wrap { max-width: 560px; }
+</style>

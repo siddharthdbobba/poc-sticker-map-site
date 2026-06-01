@@ -17,6 +17,12 @@
 	"kv_namespaces": [
 		{ "binding": "SESSION", "id": "78ee889ec6564be0b4dd68ea686fb922" }
 	],
+	// Sticker photos uploaded via /submit are stored here and served back through
+	// the /photos/[key] route. Create the bucket once with:
+	//   wrangler r2 bucket create poc-sticker-photos
+	"r2_buckets": [
+		{ "binding": "PHOTOS", "bucket_name": "poc-sticker-photos" }
+	],
 	"observability": {
 		"enabled": true
 	}
