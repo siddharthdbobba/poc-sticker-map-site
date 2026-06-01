@@ -55,6 +55,20 @@ const fieldStyle: React.CSSProperties = { marginBottom: '1.1rem' };
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 /**
+ * Parse a typed/pasted "lat, lng" decimal-degree pair (comma- or space-
+ * separated), validating ranges. Returns null for anything that isn't a clean
+ * coordinate pair (e.g. an address), so the place search handles those instead.
+ */
+function parseCoords(str: string): { lat: number; lon: number } | null {
+  const m = str.trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);
+  if (!m) return null;
+  const lat = parseFloat(m[1]);
+  const lon = parseFloat(m[2]);
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return { lat, lon };
+}
+
+/**
  * Downscale + re-encode the photo to JPEG in the browser so we don't upload a
  * 4–5 MB phone original. If the browser can't decode it (HEIC on non-Apple),
  * fall back to the original file untouched (server caps the size).
@@ -95,6 +109,9 @@ export default function SubmitForm() {
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [location, setLocation] = useState<ChosenLocation | null>(null);
+  const [mode, setMode] = useState<'address' | 'coords'>('address');
+  const [latInput, setLatInput] = useState('');
+  const [lonInput, setLonInput] = useState('');
 
   const [name, setName] = useState('');
   const [placedBy, setPlacedBy] = useState('');
@@ -106,10 +123,10 @@ export default function SubmitForm() {
 
   const previewRef = useRef<string | null>(null);
 
-  // Debounced client-side geocoding (Nominatim). Light use only.
+  // Debounced client-side geocoding (Nominatim), address mode only. Light use only.
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 3 || (location && q === location.name)) {
+    if (mode !== 'address' || q.length < 3 || (location && q === location.name)) {
       setSuggestions([]);
       return;
     }
@@ -133,7 +150,7 @@ export default function SubmitForm() {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [query, location]);
+  }, [query, location, mode]);
 
   // Revoke the object URL when the preview changes / unmounts.
   useEffect(() => {
@@ -175,12 +192,33 @@ export default function SubmitForm() {
     if (!name.trim()) setName(s.display_name.split(',')[0].trim());
   }
 
+  // Lat/Lng entered manually → unified into `location` when both parse to a valid pair.
+  function onCoordChange(nextLat: string, nextLon: string) {
+    setLatInput(nextLat);
+    setLonInput(nextLon);
+    const coords = parseCoords(`${nextLat}, ${nextLon}`);
+    setLocation(
+      coords ? { lat: coords.lat, lon: coords.lon, name: `${coords.lat}, ${coords.lon}` } : null,
+    );
+  }
+
+  // Switch between Address and Lat/Lng entry, clearing the other mode's state.
+  function switchMode(next: 'address' | 'coords') {
+    if (next === mode) return;
+    setMode(next);
+    setLocation(null);
+    setSuggestions([]);
+    setQuery('');
+    setLatInput('');
+    setLonInput('');
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
 
     if (!processed) return setError('Please add a photo.');
-    if (!location) return setError('Please choose a location from the search results.');
+    if (!location) return setError('Please set a location — search an address or enter latitude/longitude.');
     if (!name.trim()) return setError('Please give the location a name.');
 
     setStatus('submitting');
@@ -258,94 +296,143 @@ export default function SubmitForm() {
         )}
       </div>
 
-      {/* Location search */}
+      {/* Location — Address (default) or Lat / Lng */}
       <div style={{ ...fieldStyle, position: 'relative' }}>
-        <label style={labelStyle} htmlFor="place">
-          Where is it?
-        </label>
-        <input
-          id="place"
-          type="text"
-          placeholder="Search a place or address…"
-          value={query}
-          autoComplete="off"
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (location) setLocation(null);
-          }}
-          style={inputStyle}
-        />
-        {searching && (
-          <span
-            style={{
-              position: 'absolute',
-              right: '0.75rem',
-              top: '2.1rem',
-              fontSize: '0.8rem',
-              color: 'var(--muted)',
-            }}
-          >
-            …
-          </span>
+        <label style={labelStyle}>Where is it?</label>
+
+        {/* Mode toggle — Address first, then Lat / Lng */}
+        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
+          {([
+            ['address', 'Address'],
+            ['coords', 'Lat / Lng'],
+          ] as const).map(([m, lbl]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => switchMode(m)}
+              style={{
+                flex: 1,
+                padding: '0.4rem 0.5rem',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                borderRadius: '8px',
+                border: `1px solid ${mode === m ? 'var(--accent-border)' : 'var(--border)'}`,
+                background: mode === m ? 'var(--accent-soft)' : 'transparent',
+                color: 'var(--text)',
+              }}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'address' ? (
+          <>
+            <input
+              id="place"
+              type="text"
+              placeholder="Search a place or address…"
+              value={query}
+              autoComplete="off"
+              onChange={(e) => {
+                setQuery(e.target.value);
+                if (location) setLocation(null);
+              }}
+              style={inputStyle}
+            />
+            {searching && (
+              <p style={{ color: 'var(--muted)', fontSize: '0.78rem', marginTop: '0.4rem' }}>
+                Searching…
+              </p>
+            )}
+            {suggestions.length > 0 && (
+              <ul
+                style={{
+                  listStyle: 'none',
+                  margin: '0.3rem 0 0',
+                  padding: 0,
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  background: 'var(--bg-card)',
+                  overflow: 'hidden',
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  zIndex: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                }}
+              >
+                {suggestions.map((s) => (
+                  <li key={s.place_id}>
+                    <button
+                      type="button"
+                      onClick={() => pickSuggestion(s)}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '0.55rem 0.75rem',
+                        background: 'transparent',
+                        border: 'none',
+                        borderBottom: '1px solid var(--border)',
+                        color: 'var(--text)',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {s.display_name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <input
+              type="text"
+              aria-label="Latitude"
+              placeholder="Latitude (e.g. 40.4237)"
+              value={latInput}
+              onChange={(e) => onCoordChange(e.target.value, lonInput)}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <input
+              type="text"
+              aria-label="Longitude"
+              placeholder="Longitude (e.g. -86.9212)"
+              value={lonInput}
+              onChange={(e) => onCoordChange(latInput, e.target.value)}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </div>
         )}
-        {suggestions.length > 0 && (
-          <ul
-            style={{
-              listStyle: 'none',
-              margin: '0.3rem 0 0',
-              padding: 0,
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              background: 'var(--bg-card)',
-              overflow: 'hidden',
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              zIndex: 10,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-            }}
-          >
-            {suggestions.map((s) => (
-              <li key={s.place_id}>
-                <button
-                  type="button"
-                  onClick={() => pickSuggestion(s)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.55rem 0.75rem',
-                    background: 'transparent',
-                    border: 'none',
-                    borderBottom: '1px solid var(--border)',
-                    color: 'var(--text)',
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {s.display_name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+
         {location && (
           <p style={{ color: 'var(--muted)', fontSize: '0.78rem', marginTop: '0.4rem' }}>
             📍 {location.lat.toFixed(4)}, {location.lon.toFixed(4)}
           </p>
         )}
-        <p style={{ color: 'var(--muted)', fontSize: '0.7rem', marginTop: '0.35rem' }}>
-          Place search ©{' '}
-          <a
-            href="https://www.openstreetmap.org/copyright"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: 'var(--muted)', textDecoration: 'underline' }}
-          >
-            OpenStreetMap
-          </a>{' '}
-          contributors
-        </p>
+        {mode === 'coords' && !location && (latInput || lonInput) && (
+          <p style={{ color: 'var(--muted)', fontSize: '0.72rem', marginTop: '0.4rem' }}>
+            Enter a valid latitude (−90 to 90) and longitude (−180 to 180).
+          </p>
+        )}
+        {mode === 'address' && (
+          <p style={{ color: 'var(--muted)', fontSize: '0.7rem', marginTop: '0.35rem' }}>
+            Place search ©{' '}
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--muted)', textDecoration: 'underline' }}
+            >
+              OpenStreetMap
+            </a>{' '}
+            contributors
+          </p>
+        )}
       </div>
 
       {/* Location name */}
@@ -395,12 +482,12 @@ export default function SubmitForm() {
       {/* Description */}
       <div style={fieldStyle}>
         <label style={labelStyle} htmlFor="description">
-          The story <span style={{ fontWeight: 400 }}>(optional)</span>
+          Description <span style={{ fontWeight: 400 }}>(optional)</span>
         </label>
         <textarea
           id="description"
           rows={3}
-          placeholder="How did the sticker end up here?"
+          placeholder="Where exactly is the sticker at this address/location? e.g. on the trailhead sign, the second lamppost by the entrance"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           style={{ ...inputStyle, resize: 'vertical' }}
