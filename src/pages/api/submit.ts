@@ -91,29 +91,30 @@ export const POST: APIRoute = async ({ request }) => {
   ) {
     return json({ ok: false, error: 'Choose a valid location from the search.' }, 400);
   }
-  if (!(photo instanceof File) || photo.size === 0) {
-    return json({ ok: false, error: 'A photo is required.' }, 400);
-  }
-  if (photo.size > MAX_BYTES) {
-    return json({ ok: false, error: 'Photo is too large (8 MB max).' }, 413);
-  }
-
   // Fail fast if submissions aren't wired up — don't orphan a photo in R2.
   if (!env.SHEET_WEBHOOK_URL || !env.SHEET_WEBHOOK_TOKEN) {
     return json({ ok: false, error: 'Submissions are not configured yet.' }, 503);
   }
 
-  // ── Validate the photo by magic bytes ────────────────────────────────────
-  const buf = await photo.arrayBuffer();
-  const sniff = sniffImage(new Uint8Array(buf.slice(0, 16)));
-  if (!sniff) {
-    return json({ ok: false, error: 'Unsupported image. Use JPG, PNG, WebP, or HEIC.' }, 415);
+  // ── Photo is optional ────────────────────────────────────────────────────
+  // If one was attached, validate it by magic bytes (never the browser-declared
+  // type) and store it in R2. With no photo, the row's photo_url stays blank and
+  // the map shows its 🗺️ placeholder for that pin.
+  let photoUrl = '';
+  if (photo instanceof File && photo.size > 0) {
+    if (photo.size > MAX_BYTES) {
+      return json({ ok: false, error: 'Photo is too large (8 MB max).' }, 413);
+    }
+    const buf = await photo.arrayBuffer();
+    const sniff = sniffImage(new Uint8Array(buf.slice(0, 16)));
+    if (!sniff) {
+      return json({ ok: false, error: 'Unsupported image. Use JPG, PNG, WebP, or HEIC.' }, 415);
+    }
+    // Store the photo in R2 under an unguessable key.
+    const key = `sightings/${crypto.randomUUID()}.${sniff.ext}`;
+    await env.PHOTOS.put(key, buf, { httpMetadata: { contentType: sniff.contentType } });
+    photoUrl = new URL(`/photos/${key}`, request.url).toString();
   }
-
-  // ── Store the photo in R2 under an unguessable key ───────────────────────
-  const key = `sightings/${crypto.randomUUID()}.${sniff.ext}`;
-  await env.PHOTOS.put(key, buf, { httpMetadata: { contentType: sniff.contentType } });
-  const photoUrl = new URL(`/photos/${key}`, request.url).toString();
 
   // ── Append the row to the Google Sheet "Pending" tab ─────────────────────
   try {

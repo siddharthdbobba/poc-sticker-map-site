@@ -124,6 +124,9 @@ export default function SubmitForm() {
 
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
+  // First Submit with no photo arms this warning instead of sending; a second
+  // click goes through. Cleared the moment a photo is attached.
+  const [confirmNoPhoto, setConfirmNoPhoto] = useState(false);
 
   const previewRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -169,6 +172,7 @@ export default function SubmitForm() {
     const file = e.target.files?.[0];
     if (!file) return;
     setError('');
+    setConfirmNoPhoto(false); // they're adding a photo — drop the "no photo" warning
     if (file.size > MAX_BYTES * 3) {
       // Even the original is implausibly large; canvas resize would still help,
       // but guard against decoding something enormous.
@@ -235,13 +239,18 @@ export default function SubmitForm() {
     e.preventDefault();
     setError('');
 
-    if (!processed) return setError('Please add a photo.');
     if (!location) return setError('Please set a location — search an address or enter latitude/longitude.');
     if (!name.trim()) return setError('Please give the location a name.');
 
+    // Photo is optional, but nudge once if it's missing — a second click sends it.
+    if (!processed && !confirmNoPhoto) {
+      setConfirmNoPhoto(true);
+      return;
+    }
+
     setStatus('submitting');
     const fd = new FormData();
-    fd.append('photo', processed.blob, processed.name);
+    if (processed) fd.append('photo', processed.blob, processed.name); // photo is optional
     fd.append('name', name.trim());
     fd.append('latitude', String(location.lat));
     fd.append('longitude', String(location.lon));
@@ -279,6 +288,7 @@ export default function SubmitForm() {
     setDate(todayISO());
     setDescription('');
     setError('');
+    setConfirmNoPhoto(false);
     setStatus('idle');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
@@ -314,7 +324,7 @@ export default function SubmitForm() {
       {/* Photo */}
       <div style={fieldStyle}>
         <label style={labelStyle} htmlFor="photo">
-          Photo of the sticker
+          Photo of the sticker <span style={{ fontWeight: 400 }}>(optional)</span>
         </label>
         <input
           id="photo"
@@ -550,6 +560,30 @@ export default function SubmitForm() {
         />
       </div>
 
+      {confirmNoPhoto && !processed && (
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.5rem',
+            alignItems: 'flex-start',
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            borderRadius: '8px',
+            padding: '0.7rem 0.85rem',
+            marginBottom: '0.9rem',
+            fontSize: '0.85rem',
+            color: 'var(--text)',
+            lineHeight: 1.5,
+          }}
+        >
+          <span aria-hidden="true">⚠️</span>
+          <span>
+            No photo attached. A photo helps others recognize the sticker — click{' '}
+            <strong>Submit without a photo</strong> again to send it anyway.
+          </span>
+        </div>
+      )}
+
       {error && (
         <p style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '0.9rem' }}>{error}</p>
       )}
@@ -560,7 +594,11 @@ export default function SubmitForm() {
         disabled={submitting || processing}
         style={{ width: '100%', border: 'none', opacity: submitting || processing ? 0.6 : 1 }}
       >
-        {submitting ? 'Submitting…' : 'Submit sighting →'}
+        {submitting
+          ? 'Submitting…'
+          : confirmNoPhoto && !processed
+            ? 'Submit without a photo →'
+            : 'Submit sighting →'}
       </button>
 
       <p style={{ color: 'var(--muted)', fontSize: '0.75rem', marginTop: '0.75rem', textAlign: 'center' }}>
