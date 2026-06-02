@@ -68,7 +68,9 @@ const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : unde
         </a>
 
         <div class="nav-right">
-          <a class="nav-link" href="https://siddharthbobba.com" target="_blank" rel="noopener">← portfolio</a>
+          <a class="nav-portfolio" href="https://siddharthbobba.com" target="_blank" rel="noopener" title="Siddharth Bobba — portfolio">
+            <img src="/favicon.svg" alt="Siddharth Bobba portfolio" width="34" height="34" />
+          </a>
           <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light/dark theme"></button>
           <a class="btn-pill" href="https://www.purdueoutingclub.com/join" target="_blank" rel="noopener">Join ↗</a>
         </div>
@@ -81,7 +83,7 @@ const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : unde
       <div class="container">
         <p>
           A <a class="nav-link" href="https://www.purdueoutingclub.com" target="_blank" rel="noopener">Purdue Outing Club</a>
-          project · map tiles © OpenTopoMap (CC-BY-SA)
+          project · map tiles © OpenStreetMap contributors, © CARTO
         </p>
       </div>
     </footer>
