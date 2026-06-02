@@ -122,6 +122,7 @@ export default function SubmitForm() {
   const [error, setError] = useState('');
 
   const previewRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Debounced client-side geocoding (Nominatim), address mode only. Light use only.
   useEffect(() => {
@@ -244,6 +245,27 @@ export default function SubmitForm() {
     }
   }
 
+  // Clear every field back to a blank form for another submission.
+  function resetForm() {
+    setProcessed(null);
+    setPreview(null);
+    setProcessing(false);
+    setQuery('');
+    setSuggestions([]);
+    setSearching(false);
+    setLocation(null);
+    setMode('address');
+    setLatInput('');
+    setLonInput('');
+    setName('');
+    setPlacedBy('');
+    setDate(todayISO());
+    setDescription('');
+    setError('');
+    setStatus('idle');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   if (status === 'success') {
     return (
       <div className="card" style={{ textAlign: 'center' }}>
@@ -252,9 +274,18 @@ export default function SubmitForm() {
         <p style={{ color: 'var(--muted)', marginBottom: '1.25rem' }}>
           It’s pending review and will appear on the map once approved.
         </p>
-        <a href="/" className="poc-cta-button">
-          Back to the map →
-        </a>
+        <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button type="button" onClick={resetForm} className="poc-cta-button" style={{ border: 'none' }}>
+            Submit another
+          </button>
+          <a
+            href="/"
+            className="poc-cta-button"
+            style={{ background: 'transparent', color: 'var(--text)', border: '1px solid var(--border)' }}
+          >
+            Back to the map →
+          </a>
+        </div>
       </div>
     );
   }
@@ -270,6 +301,7 @@ export default function SubmitForm() {
         </label>
         <input
           id="photo"
+          ref={fileInputRef}
           type="file"
           accept="image/*"
           onChange={onPhotoChange}

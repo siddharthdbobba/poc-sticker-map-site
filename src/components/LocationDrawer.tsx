@@ -15,9 +15,11 @@ import type { StickerLocation } from '../lib/stickers';
 interface LocationDrawerProps {
   location: StickerLocation | null;
   onClose: () => void;
+  /** Open the full-screen lightbox for this sticker. */
+  onExpand?: () => void;
 }
 
-export default function LocationDrawer({ location, onClose }: LocationDrawerProps) {
+export default function LocationDrawer({ location, onClose, onExpand }: LocationDrawerProps) {
   if (!location) return null;
 
   return (
@@ -28,11 +30,13 @@ export default function LocationDrawer({ location, onClose }: LocationDrawerProp
           <img
             src={location.photoUrl}
             alt={`POC sticker at ${location.name}`}
+            onClick={onExpand}
             style={{
               width: '100%',
               height: '240px',
               objectFit: 'cover',
               display: 'block',
+              cursor: onExpand ? 'zoom-in' : 'default',
             }}
           />
         ) : (
@@ -75,6 +79,45 @@ export default function LocationDrawer({ location, onClose }: LocationDrawerProp
         >
           ×
         </button>
+
+        {/* Expand to a full-screen view of the photo + details */}
+        {onExpand && (
+          <button
+            onClick={onExpand}
+            aria-label="View full screen"
+            style={{
+              position: 'absolute',
+              bottom: '10px',
+              right: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '999px',
+              background: 'rgba(0,0,0,0.7)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.15)',
+              cursor: 'pointer',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+            }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ display: 'block' }}
+            >
+              <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+            </svg>
+            Full screen
+          </button>
+        )}
       </div>
 
       {/* ── Content ──────────────────────────────────────────────── */}

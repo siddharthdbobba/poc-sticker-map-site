@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import StickersMap from './StickersMap';
 import LocationDrawer from './LocationDrawer';
+import LocationModal from './LocationModal';
 import { parseCSV, type StickerLocation } from '../lib/stickers';
 
 type Status = 'loading' | 'ready' | 'error';
@@ -40,6 +41,7 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
   const [locations, setLocations] = useState<StickerLocation[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [selected, setSelected] = useState<StickerLocation | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!csvUrl) {
@@ -93,7 +95,18 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
         ) : (
           <>
             <StickersMap locations={locations} onMarkerClick={setSelected} />
-            <LocationDrawer location={selected} onClose={() => setSelected(null)} />
+            <LocationDrawer
+              location={selected}
+              onClose={() => {
+                setSelected(null);
+                setExpanded(false);
+              }}
+              onExpand={() => setExpanded(true)}
+            />
+            <LocationModal
+              location={expanded ? selected : null}
+              onClose={() => setExpanded(false)}
+            />
           </>
         )}
       </div>
