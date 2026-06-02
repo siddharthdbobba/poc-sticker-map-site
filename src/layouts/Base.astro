@@ -28,7 +28,14 @@ const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : unde
     <meta property="og:type" content="website" />
 
     <title>{title}</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Favicons — sb_ brand mark, matched to the portfolio (siddharthbobba.com) -->
+    <!-- so the icon Google shows in search results is the same across both sites. -->
+    <!-- ?v=2 busts hard browser caches; the root /favicon.ico is what Google fetches. -->
+    <link rel="icon" href="/favicon.ico?v=2" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png?v=2" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2" />
 
     <!-- No-flash theme: set [data-theme] before first paint. An explicit user
          choice (localStorage) always wins; otherwise follow the OS via
