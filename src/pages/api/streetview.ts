@@ -1,17 +1,19 @@
 /**
  * GET /api/streetview?lat=<n>&lng=<n>
  *
- * Coverage pre-check for the Street View feature: reports { available: true }
- * only when Google has a panorama near the point. The map uses it to decide
- * whether to show the "Street View" button, so a remote / no-coverage point
- * never opens an empty gray embed.
+ * Coverage pre-check for the Street View feature, and source of the embed key.
+ * Reports { available: true, embedKey } only when Google has a panorama near the
+ * point. The map uses `available` to decide whether to show the "Street View"
+ * button (so a no-coverage point never opens an empty gray embed) and `embedKey`
+ * to build the iframe URL.
  *
  * Why a server route (not a browser fetch): Google's Street View metadata
  * endpoint doesn't send CORS headers, so the client can't call it. Doing it here
- * also keeps the metadata key (GOOGLE_STREETVIEW_KEY) server-side, separate from
- * the public, referrer-restricted embed key (PUBLIC_GOOGLE_MAPS_EMBED_KEY) —
- * a referrer-restricted key can't authorize a server-side request. Metadata
- * requests are free and consume no quota.
+ * also lets the whole feature ride on a single RUNTIME secret
+ * (GOOGLE_STREETVIEW_KEY) — the embed key is public anyway (it appears in the
+ * iframe URL), and connected-repo *build* variables proved unreliable to keep
+ * set, so we deliberately avoid a build-time PUBLIC_ var. Metadata requests are
+ * free and consume no quota.
  *
  * Fail-closed: a missing key, a non-OK Google status, or any error → available:
  * false, so the feature stays hidden rather than surfacing an error.
@@ -77,7 +79,15 @@ export const GET: APIRoute = async ({ url }) => {
     // "OK" → a pano exists. "ZERO_RESULTS" / "NOT_FOUND" → definitively none.
     // Anything else (OVER_QUERY_LIMIT, REQUEST_DENIED, …) is transient/config —
     // don't cache it as a hard "no".
-    if (data.status === 'OK') return json({ available: true }, true);
+    if (data.status === 'OK') {
+      // Hand the embed key to the client here rather than via a build-time
+      // PUBLIC_ var, so the whole feature rides on runtime secrets only (build
+      // variables proved unreliable to keep set on the connected-repo build).
+      // The embed key is public anyway — it appears in the iframe URL. Prefer a
+      // dedicated embed key if configured, else reuse the single Street View key.
+      const embedKey = env.GOOGLE_MAPS_EMBED_KEY || env.GOOGLE_STREETVIEW_KEY;
+      return json({ available: true, embedKey }, true);
+    }
     if (data.status === 'ZERO_RESULTS' || data.status === 'NOT_FOUND') {
       return json({ available: false }, true);
     }

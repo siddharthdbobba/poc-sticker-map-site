@@ -37,21 +37,20 @@ function StatItem({
   );
 }
 
-export default function StickerMapApp({
-  csvUrl,
-  embedKey,
-}: {
-  csvUrl: string;
-  embedKey?: string;
-}) {
+export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
   const [locations, setLocations] = useState<StickerLocation[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [selected, setSelected] = useState<StickerLocation | null>(null);
   // Which lightbox pane is open (null = closed). 'photo' opens via the photo /
   // "Full screen" control; 'streetview' via the drawer's Street View button.
   const [modalView, setModalView] = useState<'photo' | 'streetview' | null>(null);
-  // Whether Google has a panorama near the selected point (from /api/streetview).
-  const [streetViewAvailable, setStreetViewAvailable] = useState(false);
+  // Street View coverage for the selected point + the (public) embed key, both
+  // from /api/streetview. The key comes from the response — not a build-time var
+  // — so the feature depends only on runtime secrets.
+  const [streetView, setStreetView] = useState<{ available: boolean; embedKey: string }>({
+    available: false,
+    embedKey: '',
+  });
 
   useEffect(() => {
     if (!csvUrl) {
@@ -78,25 +77,31 @@ export default function StickerMapApp({
     };
   }, [csvUrl]);
 
-  // Probe Street View coverage whenever a new marker is selected. The result
-  // gates the drawer button + modal toggle, so no-coverage points show nothing.
-  // Reset to false first so a stale "available" never leaks to the next point.
+  // Probe Street View coverage whenever a new marker is selected. The response
+  // carries both availability and the embed key; we only treat it as available
+  // when both are present (no key → no usable iframe). Reset first so a stale
+  // result never leaks to the next point.
   useEffect(() => {
-    setStreetViewAvailable(false);
-    if (!selected || !embedKey) return;
+    setStreetView({ available: false, embedKey: '' });
+    if (!selected) return;
     let cancelled = false;
     fetch(`/api/streetview?lat=${selected.latitude}&lng=${selected.longitude}`)
       .then((r) => r.json())
-      .then((d: { available?: boolean }) => {
-        if (!cancelled) setStreetViewAvailable(Boolean(d?.available));
+      .then((d: { available?: boolean; embedKey?: string }) => {
+        if (!cancelled) {
+          setStreetView({
+            available: Boolean(d?.available && d?.embedKey),
+            embedKey: d?.embedKey ?? '',
+          });
+        }
       })
       .catch(() => {
-        if (!cancelled) setStreetViewAvailable(false);
+        if (!cancelled) setStreetView({ available: false, embedKey: '' });
       });
     return () => {
       cancelled = true;
     };
-  }, [selected, embedKey]);
+  }, [selected]);
 
   const total = locations.length;
   const explorers = new Set(locations.map((l) => l.placedBy).filter(Boolean)).size;
@@ -132,14 +137,14 @@ export default function StickerMapApp({
                 setModalView(null);
               }}
               onExpand={() => setModalView('photo')}
-              streetViewAvailable={streetViewAvailable}
+              streetViewAvailable={streetView.available}
               onStreetView={() => setModalView('streetview')}
             />
             <LocationModal
               location={modalView ? selected : null}
               onClose={() => setModalView(null)}
-              embedKey={embedKey}
-              streetViewAvailable={streetViewAvailable}
+              embedKey={streetView.embedKey}
+              streetViewAvailable={streetView.available}
               initialView={modalView ?? 'photo'}
             />
           </>

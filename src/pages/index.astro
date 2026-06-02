@@ -8,10 +8,6 @@ import StickerMapApp from '../components/StickerMapApp';
 const DEFAULT_CSV_URL =
   'https://docs.google.com/spreadsheets/d/1aT5MWieAlBARzSs5c_vyPOp8ioqcWhhW8hA0i7zLlQg/gviz/tq?tqx=out:csv&gid=0';
 const csvUrl = import.meta.env.PUBLIC_STICKER_CSV_URL || DEFAULT_CSV_URL;
-
-// Public Google Maps Embed API key for inline Street View. Optional — when unset
-// the map shows no Street View UI. (Public by design; restrict it by HTTP referrer.)
-const embedKey = import.meta.env.PUBLIC_GOOGLE_MAPS_EMBED_KEY;
 ---
 
 <Base title="POC Sticker Map | Purdue Outing Club">
@@ -24,7 +20,7 @@ const embedKey = import.meta.env.PUBLIC_GOOGLE_MAPS_EMBED_KEY;
       </p>
     </header>
 
-    <StickerMapApp client:only="react" csvUrl={csvUrl} embedKey={embedKey}>
+    <StickerMapApp client:only="react" csvUrl={csvUrl}>
       <div slot="fallback" class="map-skeleton"></div>
     </StickerMapApp>
 

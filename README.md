@@ -67,23 +67,25 @@ coverage show no Street View affordance, because a server route pre-checks Googl
 free metadata endpoint first.
 
 This needs **one Google Cloud project with billing enabled** (you are not charged for
-Embed or metadata usage, but Google requires a card on file for the keys to work), and
-**two restricted keys**:
+Embed or metadata usage, but Google requires a card on file for the keys to work) and
+**one runtime secret**. `/api/streetview` uses the key server-side for the free
+coverage check and also returns it to the client for the embed iframe (the embed key
+is public anyway), so the whole feature rides on a single **runtime secret** — no
+build variable (those proved unreliable on connected-repo builds).
 
-1. **Embed key (public):** restrict to the **Maps Embed API** + HTTP referrers
-   (`stickers.siddharthbobba.com/*`, `localhost:*`). Set as a build-time var:
+1. Create one Google Maps API key. Restrict it to the **Maps Embed API** + **Street
+   View Static API**, and to HTTP referrers `stickers.siddharthbobba.com/*` and
+   `localhost:8787/*`.
+2. Set it as a runtime secret:
    ```sh
-   # local: in .env
-   PUBLIC_GOOGLE_MAPS_EMBED_KEY=AIza…
-   # prod: add it as a build env var in the Cloudflare dashboard
-   ```
-2. **Metadata key (secret):** restrict to the **Street View Static API**. Used only
-   server-side for the free coverage check:
-   ```sh
-   wrangler secret put GOOGLE_STREETVIEW_KEY
+   wrangler secret put GOOGLE_STREETVIEW_KEY     # prod
+   # local: GOOGLE_STREETVIEW_KEY=AIza… in .env
    ```
 
-Leave both unset and the map behaves exactly as before — no Street View UI.
+> Optional: to keep a strict split, set a separate public embed key as
+> `GOOGLE_MAPS_EMBED_KEY` (the route returns it instead of reusing the metadata key).
+
+Leave it unset and the map behaves exactly as before — no Street View UI.
 
 ## Develop
 
