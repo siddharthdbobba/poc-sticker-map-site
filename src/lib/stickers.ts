@@ -10,8 +10,10 @@
  *   name | latitude | longitude | date | description | photo_url | placed_by | status
  *
  * `status` drives moderation: rows submitted via /submit are appended as
- * "pending" and hidden from the map until someone sets the cell to "active".
- * Rows with no/empty status are treated as active (so pre-existing data shows).
+ * "pending" and hidden from the map. The reviewer (apps-script + the
+ * examples/submission-reviewer-agent) sets it to "active" (visible), "rejected",
+ * or "review" (the latter two stay hidden). Rows with no/empty status are
+ * treated as active (so pre-existing data shows).
  */
 
 export interface StickerLocation {
@@ -55,15 +57,20 @@ export function parseCSV(csv: string): StickerLocation[] {
         status: row['status'] || '',
       };
     })
-    // Drop rows with invalid coordinates, and hide submissions still pending
-    // review. Only an explicit "pending" status hides a row — empty/"active"/
-    // anything else stays visible, so existing rows without a status show.
-    .filter(
-      (loc) =>
+    // Drop rows with invalid coordinates, and hide moderated-out submissions.
+    // Hidden statuses: "pending" (awaiting review), "rejected" (declined), and
+    // "review" (deferred to a human). Empty/"active"/anything else stays visible,
+    // so existing rows without a status still show.
+    .filter((loc) => {
+      const status = loc.status.trim().toLowerCase();
+      return (
         !isNaN(loc.latitude) &&
         !isNaN(loc.longitude) &&
-        loc.status.trim().toLowerCase() !== 'pending',
-    );
+        status !== 'pending' &&
+        status !== 'rejected' &&
+        status !== 'review'
+      );
+    });
 }
 
 /** Handles quoted fields (e.g. descriptions with commas) */

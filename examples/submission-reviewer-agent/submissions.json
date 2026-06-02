@@ -1,0 +1,32 @@
+[
+  {
+    "id": "sub_001",
+    "name": "Top of Mount Rainier",
+    "latitude": 46.8523,
+    "longitude": -121.7603,
+    "date": "2026-05-18",
+    "description": "On the wooden summit register box at Columbia Crest.",
+    "photo_url": "https://stickers.example.com/photos/sightings/clean.jpg",
+    "placed_by": "Ava"
+  },
+  {
+    "id": "sub_002",
+    "name": "Eiffel Tower, Paris",
+    "latitude": 0,
+    "longitude": 0,
+    "date": "2026-04-02",
+    "description": "Stuck it near the entrance, you can't miss it.",
+    "photo_url": "https://stickers.example.com/photos/sightings/mismatch.jpg",
+    "placed_by": "anon"
+  },
+  {
+    "id": "sub_003",
+    "name": "BUY CHEAP FOLLOWERS - visit promo-deals dot net",
+    "latitude": 34.0522,
+    "longitude": -118.2437,
+    "date": "2026-05-30",
+    "description": "Best discounts!!! Click the link in my bio for 50% off followers and likes!!!",
+    "photo_url": "https://stickers.example.com/photos/sightings/spam.jpg",
+    "placed_by": "promobot"
+  }
+]

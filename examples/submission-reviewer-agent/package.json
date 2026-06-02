@@ -1,0 +1,24 @@
+{
+  "name": "submission-reviewer-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sample Claude Agent SDK app: an autonomous moderation agent that reviews pending sticker-map submissions.",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "review": "tsx review.ts",
+    "review:live": "tsx review-live.ts",
+    "probe": "tsx probe-vision.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.159",
+    "dotenv": "^16.4.5",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

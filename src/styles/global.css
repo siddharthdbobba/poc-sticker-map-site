@@ -303,7 +303,10 @@ footer {
     border: none;
     border-radius: 0;
   }
-  .sticker-modal-photo { flex: 1 1 auto; min-height: 0; }
+  .sticker-modal-photo { flex: 0 0 auto; min-height: 0; }
   .sticker-modal-photo img { max-height: 60vh; }
-  .sticker-modal-info { flex: 0 0 auto; }
+  /* flex: 1 1 auto + min-height: 0 lets the info pane shrink below its content
+     height so its own overflow-y: auto engages — otherwise a long description
+     overflows the height:100%/overflow:hidden modal and gets clipped unscrollably. */
+  .sticker-modal-info { flex: 1 1 auto; min-height: 0; }
 }

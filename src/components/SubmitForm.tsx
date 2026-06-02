@@ -54,13 +54,17 @@ const fieldStyle: React.CSSProperties = { marginBottom: '1.1rem' };
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+// A decimal-degree "lat, lng" pair (comma- or space-separated) — exactly the
+// shape Google Maps copies when you right-click a point and click the coords.
+const COORD_PAIR_RE = /^(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)$/;
+
 /**
- * Parse a typed/pasted "lat, lng" decimal-degree pair (comma- or space-
- * separated), validating ranges. Returns null for anything that isn't a clean
- * coordinate pair (e.g. an address), so the place search handles those instead.
+ * Parse a typed/pasted "lat, lng" decimal-degree pair, validating ranges.
+ * Returns null for anything that isn't a clean coordinate pair (e.g. an
+ * address), so the place search handles those instead.
  */
 function parseCoords(str: string): { lat: number; lon: number } | null {
-  const m = str.trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);
+  const m = str.trim().match(COORD_PAIR_RE);
   if (!m) return null;
   const lat = parseFloat(m[1]);
   const lon = parseFloat(m[2]);
@@ -201,6 +205,19 @@ export default function SubmitForm() {
     setLocation(
       coords ? { lat: coords.lat, lon: coords.lon, name: `${coords.lat}, ${coords.lon}` } : null,
     );
+  }
+
+  // Typing/pasting into one of the two coordinate boxes. If a whole "lat, lng"
+  // pair lands in either box (e.g. coordinates copied from Google Maps), split
+  // it across both; otherwise treat the text as just that one value.
+  function handleCoordInput(raw: string, which: 'lat' | 'lon') {
+    const m = raw.trim().match(COORD_PAIR_RE);
+    if (m) {
+      onCoordChange(m[1], m[2]);
+      return;
+    }
+    if (which === 'lat') onCoordChange(raw, lonInput);
+    else onCoordChange(latInput, raw);
   }
 
   // Switch between Address and Lat/Lng entry, clearing the other mode's state.
@@ -427,7 +444,7 @@ export default function SubmitForm() {
               aria-label="Latitude"
               placeholder="Latitude (e.g. 40.4237)"
               value={latInput}
-              onChange={(e) => onCoordChange(e.target.value, lonInput)}
+              onChange={(e) => handleCoordInput(e.target.value, 'lat')}
               style={{ ...inputStyle, flex: 1 }}
             />
             <input
@@ -435,7 +452,7 @@ export default function SubmitForm() {
               aria-label="Longitude"
               placeholder="Longitude (e.g. -86.9212)"
               value={lonInput}
-              onChange={(e) => onCoordChange(latInput, e.target.value)}
+              onChange={(e) => handleCoordInput(e.target.value, 'lon')}
               style={{ ...inputStyle, flex: 1 }}
             />
           </div>
@@ -449,6 +466,13 @@ export default function SubmitForm() {
         {mode === 'coords' && !location && (latInput || lonInput) && (
           <p style={{ color: 'var(--muted)', fontSize: '0.72rem', marginTop: '0.4rem' }}>
             Enter a valid latitude (−90 to 90) and longitude (−180 to 180).
+          </p>
+        )}
+        {mode === 'coords' && !location && !latInput && !lonInput && (
+          <p style={{ color: 'var(--muted)', fontSize: '0.72rem', marginTop: '0.4rem' }}>
+            Tip: paste coordinates copied from Google Maps (e.g.{' '}
+            <code style={{ color: 'var(--accent)' }}>40.4237, -86.9212</code>) into either box —
+            they’ll split automatically.
           </p>
         )}
         {mode === 'address' && (
