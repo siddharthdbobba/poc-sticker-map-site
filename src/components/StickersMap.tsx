@@ -8,14 +8,53 @@
 
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import type { StickerLocation } from '../lib/stickers';
 
 // ---------------------------------------------------------------------------
+// Basemap follows the site theme (data-theme on <html>, set by the toggle in
+// Base.astro and by live OS changes). Both routes mutate that attribute, so a
+// MutationObserver catches every change. Light keeps the OpenStreetMap street
+// map; dark swaps to CARTO Dark Matter — both no-API-key, same OSM data.
+// ---------------------------------------------------------------------------
+const BASEMAPS = {
+  light: {
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  },
+  dark: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    maxZoom: 20,
+  },
+} as const;
+
+function useSiteTheme(): 'light' | 'dark' {
+  // Default to dark to match Base.astro's no-stored-choice fallback.
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light'
+      ? 'light'
+      : 'dark',
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const read = () => setTheme(el.dataset.theme === 'light' ? 'light' : 'dark');
+    read(); // sync in case it changed between first render and mount
+    const observer = new MutationObserver(read);
+    observer.observe(el, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
+// ---------------------------------------------------------------------------
 // Custom gold marker icon — uses the theme accent (var(--accent)).
-// The dark border + glow are tuned for contrast on the light topo tiles,
-// so they stay static across light/dark UI themes.
+// The marker color is fixed across themes; the dark border + gold fill stay
+// readable on both the light street basemap and the dark CARTO basemap.
 // Defined at module scope so it's created once, not on every render.
 // ---------------------------------------------------------------------------
 const pocMarkerIcon = L.divIcon({
@@ -110,6 +149,9 @@ interface StickersMapProps {
 }
 
 export default function StickersMap({ locations, onMarkerClick }: StickersMapProps) {
+  const theme = useSiteTheme();
+  const basemap = BASEMAPS[theme];
+
   return (
     <MapContainer
       center={[39.5, -98.35]}
@@ -117,11 +159,13 @@ export default function StickersMap({ locations, onMarkerClick }: StickersMapPro
       scrollWheelZoom={true}
       style={{ height: '600px', width: '100%', borderRadius: '0.5rem' }}
     >
-      {/* OpenTopoMap — topographic terrain tiles with contour lines & hillshading. No API key needed. */}
+      {/* Theme-aware basemap (street in light, CARTO Dark Matter in dark). The
+          `key` forces a clean layer swap when the theme flips. No API key. */}
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
-        url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
-        maxZoom={17}
+        key={theme}
+        attribution={basemap.attribution}
+        url={basemap.url}
+        maxZoom={basemap.maxZoom}
       />
 
       <FullscreenControl />

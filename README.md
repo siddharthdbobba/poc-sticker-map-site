@@ -11,8 +11,9 @@ Built with **Astro** + **Leaflet** (`react-leaflet`), styled to match the club s
 - A single React island (`StickerMapApp`, mounted `client:only="react"`) fetches the
   published Google Sheet **CSV** in the browser, parses it, and renders a Leaflet map
   with a marker per sighting. Click a marker for the photo + story.
-- Terrain basemap is **OpenTopoMap** (no API key). The map imagery is a fixed light
-  topographic style; the surrounding UI (chrome, drawer, skeleton) follows the theme.
+- Basemap follows the theme (no API key): the **OpenStreetMap** standard street map in
+  light, **CARTO Dark Matter** in dark — same OSM data. The surrounding UI follows the
+  theme as well.
 - The map read path is fully static. **Submissions** (the `/submit` page) use two
   Worker server routes (`/api/submit`, `/photos/[key]`) that need R2 + secrets — see
   [Submissions](#submissions-upload-page) below.
