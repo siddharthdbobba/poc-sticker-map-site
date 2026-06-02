@@ -21,9 +21,11 @@ A project Stop hook (`.claude/settings.json`) runs `npm run build` in the backgr
 
 ## Architecture
 
-A hybrid Astro app on **Cloudflare Workers**. Most of the site is static-rendered, but two routes opt into SSR (`export const prerender = false`) because they need Worker bindings. Understanding the split between the static read path and the server write path is the key to this codebase.
+A hybrid Astro app on **Cloudflare Workers**. Most of the site is static-rendered, but three routes opt into SSR (`export const prerender = false`) because they need Worker bindings/secrets. Understanding the split between the static read path and the server write path is the key to this codebase.
 
 **Read path (static, no secrets).** The map is a single React island — `StickerMapApp`, mounted `client:only="react"` in `src/pages/index.astro`. In the browser it fetches a **published Google Sheet CSV** (`PUBLIC_STICKER_CSV_URL`), parses it with the pure helper in `src/lib/stickers.ts`, and renders a Leaflet map (`react-leaflet`, OpenTopoMap basemap, no API key). Column headers in row 1 must match exactly: `name, latitude, longitude, date, description, photo_url, placed_by, status`. Rows with non-numeric lat/lng are silently dropped, as are rows whose `status` is `"pending"`.
+
+**Street View (optional, read path).** Clicking a marker opens a drawer; if the point has Google Street View coverage, a button opens an inline panorama in the lightbox (`LocationModal`). This uses the **Maps Embed API in `streetview` mode** (free, unlimited, no per-load charge) via a public, referrer-restricted key (`PUBLIC_GOOGLE_MAPS_EMBED_KEY`). Coverage is pre-checked through `src/pages/api/streetview.ts` — an SSR route that calls Google's free metadata endpoint **server-side** (it isn't CORS-friendly) using the `GOOGLE_STREETVIEW_KEY` secret, returning `{ available }`. The whole feature is additive and **gated on the keys**: with neither set, no Street View UI renders and nothing else changes.
 
 **Write path (SSR, needs bindings).** `/submit` (`src/pages/submit.astro` + `src/components/SubmitForm.tsx`) downscales the photo in-browser, geocodes a typed place via Nominatim, and POSTs multipart to `src/pages/api/submit.ts`. That route:
 1. Validates fields and the photo by **magic bytes** (not the browser content-type). JPG/PNG/WebP/HEIC only; **SVG is deliberately rejected** as an XSS vector.
@@ -40,6 +42,7 @@ A hybrid Astro app on **Cloudflare Workers**. Most of the site is static-rendere
 - `SESSION` (KV) — required by the Astro Cloudflare adapter (sessions on by default). The namespace id is **pinned** in `wrangler.jsonc`; do not let a deploy re-create it (fails with KV error 10014).
 - `ASSETS` — serves the static `dist/` output.
 - Secrets: `SHEET_WEBHOOK_URL`, `SHEET_WEBHOOK_TOKEN` (`wrangler secret put …`). Locally, put them in `.env`.
+- Street View keys (optional, one Google Cloud project — billing must be enabled but usage is $0): `PUBLIC_GOOGLE_MAPS_EMBED_KEY` (public, build-time `.env`/dashboard build var; restrict to **Maps Embed API** + HTTP referrers) and `GOOGLE_STREETVIEW_KEY` (Worker secret; restrict to **Street View Static API** — used only for the free metadata coverage check). Leave both unset to disable the feature.
 - Deploy: pushing to `main` triggers a **Cloudflare connected-repo build** (runs `npm run build` and deploys the Worker; confirmed ~30s, no `.github/workflows`). `npm run deploy` (`wrangler deploy`) is the manual alternative. Deploy is locked to the custom domain `stickers.siddharthbobba.com` (`workers_dev: false`, `preview_urls: false`); the README's "deploy dist/ to any static host" note is stale — the submission routes require the Worker.
 
 ## Conventions

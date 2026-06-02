@@ -24,6 +24,7 @@ Copy `.env.example` → `.env` and set:
 | Var | Purpose |
 | --- | --- |
 | `PUBLIC_STICKER_CSV_URL` | Published Google Sheet CSV (File → Share → Publish to web → CSV). Required — the map is empty without it. |
+| `PUBLIC_GOOGLE_MAPS_EMBED_KEY` | Optional. Public key for inline Street View. Leave blank to disable the feature. See [Street View](#street-view-optional). |
 
 Sheet columns (row 1 headers): `name, latitude, longitude, date, description, photo_url, placed_by`.
 
@@ -55,6 +56,33 @@ One-time setup:
 
 Bot protection (Cloudflare Turnstile) is a planned Phase 2; until then manual review
 is the guardrail.
+
+## Street View (optional)
+
+When a sticker point has Google Street View coverage, the lightbox gains a
+**Photo | Street View** toggle that embeds the panorama inline (via the **Maps Embed
+API** in `streetview` mode — free, unlimited, no per-load charge). Points with no
+coverage show no Street View affordance, because a server route pre-checks Google's
+free metadata endpoint first.
+
+This needs **one Google Cloud project with billing enabled** (you are not charged for
+Embed or metadata usage, but Google requires a card on file for the keys to work), and
+**two restricted keys**:
+
+1. **Embed key (public):** restrict to the **Maps Embed API** + HTTP referrers
+   (`stickers.siddharthbobba.com/*`, `localhost:*`). Set as a build-time var:
+   ```sh
+   # local: in .env
+   PUBLIC_GOOGLE_MAPS_EMBED_KEY=AIza…
+   # prod: add it as a build env var in the Cloudflare dashboard
+   ```
+2. **Metadata key (secret):** restrict to the **Street View Static API**. Used only
+   server-side for the free coverage check:
+   ```sh
+   wrangler secret put GOOGLE_STREETVIEW_KEY
+   ```
+
+Leave both unset and the map behaves exactly as before — no Street View UI.
 
 ## Develop
 

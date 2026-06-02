@@ -2,17 +2,27 @@
  * LocationModal.tsx
  *
  * Full-screen lightbox for a single sticker — a large, uncropped photo plus all
- * of its details. Opened from LocationDrawer (the "Full screen" button or by
- * clicking the photo). Closes on the × button, a backdrop click, or Escape.
- * Layout + animation live in global.css (.sticker-modal*).
+ * of its details. Opened from LocationDrawer (the "Full screen" button, the
+ * "Street View" button, or by clicking the photo). Closes on the × button, a
+ * backdrop click, or Escape. Layout + animation live in global.css (.sticker-modal*).
+ *
+ * When the point has Google Street View coverage and an embed key is configured,
+ * a Photo | Street View toggle swaps the media pane for an embedded panorama
+ * (Maps Embed API, streetview mode — free, no per-load charge).
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { StickerLocation } from '../lib/stickers';
 
 interface LocationModalProps {
   location: StickerLocation | null;
   onClose: () => void;
+  /** Public Maps Embed API key. Absent → no Street View UI. */
+  embedKey?: string;
+  /** Whether Google has a panorama near this point (from /api/streetview). */
+  streetViewAvailable?: boolean;
+  /** Which pane to open on. Only honored for streetview when coverage exists. */
+  initialView?: 'photo' | 'streetview';
 }
 
 const pill: React.CSSProperties = {
@@ -25,7 +35,22 @@ const pill: React.CSSProperties = {
   fontWeight: 500,
 };
 
-export default function LocationModal({ location, onClose }: LocationModalProps) {
+export default function LocationModal({
+  location,
+  onClose,
+  embedKey,
+  streetViewAvailable = false,
+  initialView = 'photo',
+}: LocationModalProps) {
+  const canStreetView = Boolean(embedKey) && streetViewAvailable;
+  const [view, setView] = useState<'photo' | 'streetview'>('photo');
+
+  // Reset the active pane whenever the modal (re)opens or a new initial view is
+  // requested. Only honor a streetview request when coverage actually exists.
+  useEffect(() => {
+    setView(initialView === 'streetview' && canStreetView ? 'streetview' : 'photo');
+  }, [location?.id, initialView, canStreetView]);
+
   // Close on Escape and lock background scroll while open.
   useEffect(() => {
     if (!location) return;
@@ -52,12 +77,45 @@ export default function LocationModal({ location, onClose }: LocationModalProps)
       aria-label={`${location.name} — full screen`}
     >
       <div className="sticker-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Large, uncropped photo (object-fit: contain on black) */}
+        {/* Media pane: the large photo, or the Street View panorama when toggled */}
         <div className="sticker-modal-photo">
-          {location.photoUrl ? (
+          {view === 'streetview' && embedKey ? (
+            <iframe
+              title={`Street View near ${location.name}`}
+              src={`https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(
+                embedKey,
+              )}&location=${location.latitude},${location.longitude}`}
+              loading="lazy"
+              allowFullScreen
+              // Keep the default referrer policy: the Referer header is what
+              // satisfies the embed key's HTTP-referrer restriction.
+            />
+          ) : location.photoUrl ? (
             <img src={location.photoUrl} alt={`POC sticker at ${location.name}`} />
           ) : (
             <div style={{ fontSize: '5rem' }}>🗺️</div>
+          )}
+
+          {/* Photo | Street View toggle — only when this point has coverage */}
+          {canStreetView && (
+            <div className="sticker-modal-tabs" role="tablist" aria-label="Media view">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'photo'}
+                onClick={() => setView('photo')}
+              >
+                Photo
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'streetview'}
+                onClick={() => setView('streetview')}
+              >
+                Street View
+              </button>
+            </div>
           )}
         </div>
 

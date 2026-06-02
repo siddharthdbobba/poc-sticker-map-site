@@ -37,11 +37,21 @@ function StatItem({
   );
 }
 
-export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
+export default function StickerMapApp({
+  csvUrl,
+  embedKey,
+}: {
+  csvUrl: string;
+  embedKey?: string;
+}) {
   const [locations, setLocations] = useState<StickerLocation[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [selected, setSelected] = useState<StickerLocation | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  // Which lightbox pane is open (null = closed). 'photo' opens via the photo /
+  // "Full screen" control; 'streetview' via the drawer's Street View button.
+  const [modalView, setModalView] = useState<'photo' | 'streetview' | null>(null);
+  // Whether Google has a panorama near the selected point (from /api/streetview).
+  const [streetViewAvailable, setStreetViewAvailable] = useState(false);
 
   useEffect(() => {
     if (!csvUrl) {
@@ -67,6 +77,26 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
       cancelled = true;
     };
   }, [csvUrl]);
+
+  // Probe Street View coverage whenever a new marker is selected. The result
+  // gates the drawer button + modal toggle, so no-coverage points show nothing.
+  // Reset to false first so a stale "available" never leaks to the next point.
+  useEffect(() => {
+    setStreetViewAvailable(false);
+    if (!selected || !embedKey) return;
+    let cancelled = false;
+    fetch(`/api/streetview?lat=${selected.latitude}&lng=${selected.longitude}`)
+      .then((r) => r.json())
+      .then((d: { available?: boolean }) => {
+        if (!cancelled) setStreetViewAvailable(Boolean(d?.available));
+      })
+      .catch(() => {
+        if (!cancelled) setStreetViewAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, embedKey]);
 
   const total = locations.length;
   const explorers = new Set(locations.map((l) => l.placedBy).filter(Boolean)).size;
@@ -99,13 +129,18 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
               location={selected}
               onClose={() => {
                 setSelected(null);
-                setExpanded(false);
+                setModalView(null);
               }}
-              onExpand={() => setExpanded(true)}
+              onExpand={() => setModalView('photo')}
+              streetViewAvailable={streetViewAvailable}
+              onStreetView={() => setModalView('streetview')}
             />
             <LocationModal
-              location={expanded ? selected : null}
-              onClose={() => setExpanded(false)}
+              location={modalView ? selected : null}
+              onClose={() => setModalView(null)}
+              embedKey={embedKey}
+              streetViewAvailable={streetViewAvailable}
+              initialView={modalView ?? 'photo'}
             />
           </>
         )}

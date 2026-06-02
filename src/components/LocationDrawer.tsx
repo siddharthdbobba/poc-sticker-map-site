@@ -15,11 +15,21 @@ import type { StickerLocation } from '../lib/stickers';
 interface LocationDrawerProps {
   location: StickerLocation | null;
   onClose: () => void;
-  /** Open the full-screen lightbox for this sticker. */
+  /** Open the full-screen lightbox (photo) for this sticker. */
   onExpand?: () => void;
+  /** Google has a panorama near this point — show the Street View button. */
+  streetViewAvailable?: boolean;
+  /** Open the lightbox straight to the Street View panorama. */
+  onStreetView?: () => void;
 }
 
-export default function LocationDrawer({ location, onClose, onExpand }: LocationDrawerProps) {
+export default function LocationDrawer({
+  location,
+  onClose,
+  onExpand,
+  streetViewAvailable = false,
+  onStreetView,
+}: LocationDrawerProps) {
   if (!location) return null;
 
   return (
@@ -116,6 +126,47 @@ export default function LocationDrawer({ location, onClose, onExpand }: Location
               <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
             </svg>
             Full screen
+          </button>
+        )}
+
+        {/* Street View — only when /api/streetview confirmed coverage. Mirrors
+            the Full screen chip, pinned to the opposite (bottom-left) corner. */}
+        {streetViewAvailable && onStreetView && (
+          <button
+            onClick={onStreetView}
+            aria-label="Open Street View"
+            style={{
+              position: 'absolute',
+              bottom: '10px',
+              left: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '999px',
+              background: 'rgba(0,0,0,0.7)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.15)',
+              cursor: 'pointer',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+            }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ display: 'block' }}
+            >
+              <circle cx="12" cy="10" r="3" />
+              <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" />
+            </svg>
+            Street View
           </button>
         )}
       </div>
