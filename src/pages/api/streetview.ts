@@ -19,6 +19,11 @@
  * false, so the feature stays hidden rather than surfacing an error.
  *
  * Runs on the Worker (prerender = false) to read GOOGLE_STREETVIEW_KEY.
+ *
+ * Origin restriction: this endpoint only responds to requests whose Origin or
+ * Referer header matches stickers.siddharthbobba.com (the deployment domain).
+ * This prevents third-party sites from abusing the Google Street View metadata
+ * API through this proxy. 403 is returned for unauthorized origins.
  */
 
 import type { APIRoute } from 'astro';
@@ -47,7 +52,52 @@ function json(data: unknown, cacheable: boolean, status = 200): Response {
   });
 }
 
-export const GET: APIRoute = async ({ url }) => {
+// Allowed origins that may call this endpoint. The deployed site domain is the
+// primary allowed origin; localhost is permitted for development.
+const ALLOWED_ORIGINS = [
+  'https://stickers.siddharthbobba.com',
+  'http://localhost:8787',
+  'http://localhost:4321',
+];
+
+/**
+ * Extract the origin from the Request's Origin or Referer header. Origin is
+ * preferred when present (CORS requests always send it); Referer is a
+ * reasonable fallback for same-origin navigations where the browser omits
+ * Origin. Returns null when neither header is present or parseable.
+ */
+function getRequestOrigin(request: Request): string | null {
+  const origin = request.headers.get('Origin');
+  if (origin) return origin;
+
+  const referer = request.headers.get('Referer');
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      // Malformed URL — treat as unverifiable.
+    }
+  }
+  return null;
+}
+
+export const GET: APIRoute = async ({ url, request }) => {
+  // ── Origin check ─────────────────────────────────────────────────────────
+  // Verify the request comes from our deployed site. This prevents third-party
+  // sites from abusing this endpoint as a Google Street View metadata proxy.
+  // We check Origin first (set by all CORS/API requests), then fall back to
+  // Referer (set by same-origin navigations). Requests without either header
+  // (e.g. raw curl) are rejected.
+  const reqOrigin = getRequestOrigin(request);
+  if (!reqOrigin || !ALLOWED_ORIGINS.includes(reqOrigin)) {
+    return new Response(
+      JSON.stringify({ error: 'forbidden', message: 'unauthorized origin' }),
+      {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+  }
   const lat = parseFloat(url.searchParams.get('lat') ?? '');
   const lng = parseFloat(url.searchParams.get('lng') ?? '');
 

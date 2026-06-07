@@ -19,6 +19,10 @@ import { parseCSV, type StickerLocation } from '../lib/stickers';
 
 type Status = 'loading' | 'ready' | 'error';
 
+// "No Street View" — the reset/default for the streetView state (initial mount,
+// every new marker select, and the fetch error path all land here).
+const STREET_VIEW_NONE = { available: false, embedKey: '' };
+
 function StatItem({
   emoji,
   value,
@@ -47,10 +51,9 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
   // Street View coverage for the selected point + the (public) embed key, both
   // from /api/streetview. The key comes from the response — not a build-time var
   // — so the feature depends only on runtime secrets.
-  const [streetView, setStreetView] = useState<{ available: boolean; embedKey: string }>({
-    available: false,
-    embedKey: '',
-  });
+  const [streetView, setStreetView] = useState<{ available: boolean; embedKey: string }>(
+    STREET_VIEW_NONE,
+  );
 
   useEffect(() => {
     if (!csvUrl) {
@@ -77,26 +80,23 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
     };
   }, [csvUrl]);
 
-  // Probe Street View coverage whenever a new marker is selected. The response
-  // carries both availability and the embed key; we only treat it as available
-  // when both are present (no key → no usable iframe). Reset first so a stale
-  // result never leaks to the next point.
+  // Probe Street View coverage whenever a new marker is selected. /api/streetview
+  // is the single source of truth: it reports available:true only when it has both
+  // coverage and a key, and hands back that (public) embed key for the iframe.
+  // Reset first so a stale result never leaks to the next point.
   useEffect(() => {
-    setStreetView({ available: false, embedKey: '' });
+    setStreetView(STREET_VIEW_NONE);
     if (!selected) return;
     let cancelled = false;
     fetch(`/api/streetview?lat=${selected.latitude}&lng=${selected.longitude}`)
       .then((r) => r.json())
       .then((d: { available?: boolean; embedKey?: string }) => {
         if (!cancelled) {
-          setStreetView({
-            available: Boolean(d?.available && d?.embedKey),
-            embedKey: d?.embedKey ?? '',
-          });
+          setStreetView({ available: Boolean(d?.available), embedKey: d?.embedKey ?? '' });
         }
       })
       .catch(() => {
-        if (!cancelled) setStreetView({ available: false, embedKey: '' });
+        if (!cancelled) setStreetView(STREET_VIEW_NONE);
       });
     return () => {
       cancelled = true;

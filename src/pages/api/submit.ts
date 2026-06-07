@@ -66,6 +66,27 @@ function json(data: unknown, status = 200): Response {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // ── Origin / Referer check (CSRF mitigation) ────────────────────────────
+  // Only accepts POSTs that originated from the sticker map domain. This
+  // prevents off-site forms from submitting fake sightings via this endpoint.
+  const origin = request.headers.get('Origin') || '';
+  const referer = request.headers.get('Referer') || '';
+  const ALLOWED_ORIGINS = [
+    'https://stickers.siddharthbobba.com',
+    'http://localhost:8787',
+    'http://localhost:4321',
+  ];
+  const isAllowed = ALLOWED_ORIGINS.some(
+    (o) => origin.startsWith(o) || referer.startsWith(o),
+  );
+  if (!origin && !referer) {
+    // No referrer info at all — likely a direct curl/wget. Reject.
+    return json({ ok: false, error: 'Missing origin.' }, 403);
+  }
+  if (!isAllowed) {
+    return json({ ok: false, error: 'Unauthorized origin.' }, 403);
+  }
+
   let form: FormData;
   try {
     form = await request.formData();
