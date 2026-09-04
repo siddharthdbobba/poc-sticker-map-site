@@ -49,4 +49,4 @@ A hybrid Astro app on **Cloudflare Workers**. Most of the site is static-rendere
 
 - Files carry a header comment explaining their role and the *why* behind security/edge-case decisions (see `src/pages/api/submit.ts`). Match that density when editing.
 - `src/lib/stickers.ts` is intentionally pure — no `fetch`, no env access. Keep data-shaping logic there.
-- Theme follows OS light/dark until the user explicitly toggles. The Leaflet basemap tracks the theme too (via a `MutationObserver` on `<html>`'s `data-theme` in `StickersMap.tsx`): an OpenStreetMap street map in light, CARTO Dark Matter in dark — both no-API-key.
+- Theme follows OS light/dark until the user explicitly toggles. The Leaflet basemap tracks the theme too (via a `MutationObserver` on `<html>`'s `data-theme` in `StickersMap.tsx`): an OpenStreetMap street map in light, Esri Dark Gray Canvas in dark — both no-API-key. (CARTO Dark Matter was dropped once keyless `basemaps.cartocdn.com` tiles started coming back watermarked "API KEY REQUIRED" under an HTTP 200.)

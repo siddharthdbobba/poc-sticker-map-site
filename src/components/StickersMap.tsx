@@ -16,20 +16,32 @@ import type { StickerLocation } from '../lib/stickers';
 // Basemap follows the site theme (data-theme on <html>, set by the toggle in
 // Base.astro and by live OS changes). Both routes mutate that attribute, so a
 // MutationObserver catches every change. Light keeps the OpenStreetMap street
-// map; dark swaps to CARTO Dark Matter — both no-API-key, same OSM data.
+// map; dark uses Esri's Dark Gray Canvas — both no-API-key.
+//
+// Dark was CARTO Dark Matter until CARTO started stamping "API KEY REQUIRED"
+// across keyless `basemaps.cartocdn.com` tiles (they still return HTTP 200, so
+// the watermark is the only symptom). Esri ships the dark canvas as two layers
+// — a label-free base plus a reference layer carrying the place labels — and
+// tops out at native zoom 16, so Leaflet overzooms the last few levels to keep
+// parity with the light basemap's 19.
 // ---------------------------------------------------------------------------
 const BASEMAPS = {
   light: {
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19,
+    layers: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+    maxNativeZoom: 19,
   },
   dark: {
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    maxZoom: 20,
+      'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Esri, DeLorme, NAVTEQ',
+    maxZoom: 19,
+    layers: [
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    ],
+    maxNativeZoom: 16,
   },
 } as const;
 
@@ -54,7 +66,7 @@ function useSiteTheme(): 'light' | 'dark' {
 // ---------------------------------------------------------------------------
 // Custom gold marker icon — uses the theme accent (var(--accent)).
 // The marker color is fixed across themes; the dark border + gold fill stay
-// readable on both the light street basemap and the dark CARTO basemap.
+// readable on both the light street basemap and the dark Esri basemap.
 // Defined at module scope so it's created once, not on every render.
 // ---------------------------------------------------------------------------
 const pocMarkerIcon = L.divIcon({
@@ -159,14 +171,18 @@ export default function StickersMap({ locations, onMarkerClick }: StickersMapPro
       scrollWheelZoom={true}
       style={{ height: '600px', width: '100%', borderRadius: '0.5rem' }}
     >
-      {/* Theme-aware basemap (street in light, CARTO Dark Matter in dark). The
+      {/* Theme-aware basemap (street in light, Esri Dark Gray Canvas in dark).
+          Dark stacks a base + a labels layer, so this maps over `layers`. The
           `key` forces a clean layer swap when the theme flips. No API key. */}
-      <TileLayer
-        key={theme}
-        attribution={basemap.attribution}
-        url={basemap.url}
-        maxZoom={basemap.maxZoom}
-      />
+      {basemap.layers.map((url, i) => (
+        <TileLayer
+          key={`${theme}-${i}`}
+          attribution={i === 0 ? basemap.attribution : undefined}
+          url={url}
+          maxZoom={basemap.maxZoom}
+          maxNativeZoom={basemap.maxNativeZoom}
+        />
+      ))}
 
       <FullscreenControl />
 
