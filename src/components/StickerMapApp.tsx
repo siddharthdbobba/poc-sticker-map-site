@@ -54,6 +54,28 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
   const [streetView, setStreetView] = useState<{ available: boolean; embedKey: string }>(
     STREET_VIEW_NONE,
   );
+  // CARTO basemap key from /api/basemap — null while the probe is in flight,
+  // then the key or '' (none configured). Same runtime-secret pattern as the
+  // Street View key: no build-time PUBLIC_ var. The map render waits on this so
+  // the dark basemap never flips from the Esri fallback to CARTO mid-view; it
+  // costs nothing in practice because the CSV fetch below runs in parallel.
+  const [cartoKey, setCartoKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/basemap')
+      .then((r) => r.json())
+      .then((d: { cartoKey?: string }) => {
+        if (!cancelled) setCartoKey(d?.cartoKey ?? '');
+      })
+      .catch(() => {
+        // Unreachable route (or a 403) is a normal "no key" state, not an error.
+        if (!cancelled) setCartoKey('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!csvUrl) {
@@ -125,11 +147,15 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
             <br />
             Set <code>PUBLIC_STICKER_CSV_URL</code> to the published Google Sheet CSV.
           </div>
-        ) : status === 'loading' ? (
+        ) : status === 'loading' || cartoKey === null ? (
           <div className="map-skeleton" />
         ) : (
           <>
-            <StickersMap locations={locations} onMarkerClick={setSelected} />
+            <StickersMap
+              locations={locations}
+              onMarkerClick={setSelected}
+              cartoKey={cartoKey}
+            />
             <LocationDrawer
               location={selected}
               onClose={() => {

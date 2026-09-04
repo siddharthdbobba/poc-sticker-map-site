@@ -16,22 +16,54 @@ import type { StickerLocation } from '../lib/stickers';
 // Basemap follows the site theme (data-theme on <html>, set by the toggle in
 // Base.astro and by live OS changes). Both routes mutate that attribute, so a
 // MutationObserver catches every change. Light keeps the OpenStreetMap street
-// map; dark swaps to CARTO Dark Matter — both no-API-key, same OSM data.
+// map; dark is CARTO Dark Matter.
+//
+// CARTO now stamps "API KEY REQUIRED" across keyless basemaps.cartocdn.com
+// tiles — they still return HTTP 200 with a valid PNG, so the watermark is the
+// only symptom. A key (free tier) removes it, and `cartoKey` carries it in from
+// /api/basemap at runtime. Without a key we fall back to Esri's keyless Dark
+// Gray Canvas rather than serve a watermarked map: it's a lighter grey and
+// ships labels as a separate reference layer, hence `layers` being an array.
+// Esri also tops out at native zoom 16, so maxNativeZoom lets Leaflet overzoom
+// the last few levels to keep parity with light's 19.
 // ---------------------------------------------------------------------------
-const BASEMAPS = {
-  light: {
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19,
-  },
-  dark: {
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+interface Basemap {
+  attribution: string;
+  maxZoom: number;
+  maxNativeZoom: number;
+  layers: string[];
+}
+
+const LIGHT_BASEMAP: Basemap = {
+  attribution: OSM_ATTRIBUTION,
+  maxZoom: 19,
+  maxNativeZoom: 19,
+  layers: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+};
+
+function cartoBasemap(key: string): Basemap {
+  return {
+    attribution: `${OSM_ATTRIBUTION} &copy; <a href="https://carto.com/attributions">CARTO</a>`,
     maxZoom: 20,
-  },
-} as const;
+    maxNativeZoom: 20,
+    layers: [
+      `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
+    ],
+  };
+}
+
+const ESRI_DARK_BASEMAP: Basemap = {
+  attribution: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Esri, DeLorme, NAVTEQ',
+  maxZoom: 19,
+  maxNativeZoom: 16,
+  layers: [
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+  ],
+};
 
 function useSiteTheme(): 'light' | 'dark' {
   // Default to dark to match Base.astro's no-stored-choice fallback.
@@ -146,11 +178,14 @@ function FullscreenControl() {
 interface StickersMapProps {
   locations: StickerLocation[];
   onMarkerClick: (loc: StickerLocation) => void;
+  /** CARTO basemap key from /api/basemap. Empty string → keyless Esri fallback. */
+  cartoKey: string;
 }
 
-export default function StickersMap({ locations, onMarkerClick }: StickersMapProps) {
+export default function StickersMap({ locations, onMarkerClick, cartoKey }: StickersMapProps) {
   const theme = useSiteTheme();
-  const basemap = BASEMAPS[theme];
+  const basemap =
+    theme === 'light' ? LIGHT_BASEMAP : cartoKey ? cartoBasemap(cartoKey) : ESRI_DARK_BASEMAP;
 
   return (
     <MapContainer
@@ -159,14 +194,19 @@ export default function StickersMap({ locations, onMarkerClick }: StickersMapPro
       scrollWheelZoom={true}
       style={{ height: '600px', width: '100%', borderRadius: '0.5rem' }}
     >
-      {/* Theme-aware basemap (street in light, CARTO Dark Matter in dark). The
-          `key` forces a clean layer swap when the theme flips. No API key. */}
-      <TileLayer
-        key={theme}
-        attribution={basemap.attribution}
-        url={basemap.url}
-        maxZoom={basemap.maxZoom}
-      />
+      {/* Theme-aware basemap (street in light, CARTO Dark Matter in dark — or
+          Esri's dark canvas when no CARTO key is configured, which ships labels
+          as a second layer, hence the map over `layers`). The `key` forces a
+          clean layer swap when the theme or the basemap identity changes. */}
+      {basemap.layers.map((url, i) => (
+        <TileLayer
+          key={`${theme}-${Boolean(cartoKey)}-${i}`}
+          attribution={i === 0 ? basemap.attribution : undefined}
+          url={url}
+          maxZoom={basemap.maxZoom}
+          maxNativeZoom={basemap.maxNativeZoom}
+        />
+      ))}
 
       <FullscreenControl />
 

@@ -27,6 +27,15 @@ declare namespace Cloudflare {
      * you split the metadata key (server-only) from the embed key (public).
      */
     GOOGLE_MAPS_EMBED_KEY?: string;
+    /**
+     * CARTO API key for the dark basemap, returned to the client by
+     * /api/basemap and appended to every tile URL. Public by nature (it rides in
+     * the tile request) — restrict it to this domain in the CARTO dashboard.
+     * Optional: unset → the map falls back to Esri's keyless dark canvas, since
+     * keyless CARTO tiles come back watermarked "API KEY REQUIRED".
+     * Runtime-only on purpose: connected-repo *build* variables proved unreliable.
+     */
+    CARTO_BASEMAP_KEY?: string;
   }
 }
 

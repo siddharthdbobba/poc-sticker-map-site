@@ -36,7 +36,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
     "default-src 'self'; " +
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
       "style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com; " +
+      "img-src 'self' data: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://server.arcgisonline.com; " +
       "font-src 'self'; " +
       "connect-src 'self' https://docs.google.com; " +
       "frame-src 'self' https://www.google.com; " +
