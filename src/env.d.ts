@@ -36,6 +36,14 @@ declare namespace Cloudflare {
      * Runtime-only on purpose: connected-repo *build* variables proved unreliable.
      */
     CARTO_BASEMAP_KEY?: string;
+    /**
+     * Shared password for the /admin moderation queue, checked by
+     * /api/admin/login in constant time. Optional in the type only so an
+     * unconfigured deployment type-checks — at runtime an unset value means
+     * every login is refused (fail-closed), never that the gate is skipped.
+     * Set it with `wrangler secret put ADMIN_PASSWORD`.
+     */
+    ADMIN_PASSWORD?: string;
   }
 }
 

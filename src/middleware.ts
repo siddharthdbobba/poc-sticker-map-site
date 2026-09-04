@@ -29,16 +29,22 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   // 'unsafe-inline' / 'unsafe-eval' needed for Astro's hydration island
   // scripts and React in dev/prod. Tile sources: OSM (standard street) and
   // CARTO (dark theme). connect-src includes docs.google.com for the
-  // spreadsheet export. frame-src covers the Street View embed and the
+  // spreadsheet export, plus Nominatim for the submit form's geocoding.
+  // img-src needs blob: for the submit form's local photo preview
+  // (URL.createObjectURL). frame-src covers the Street View embed and the
   // Google Docs viewer fallback. form-action locked to self.
+  //
+  // NOTE: this block only reaches SSR routes. Prerendered pages bypass
+  // middleware entirely and get the same headers from public/_headers —
+  // keep the two in sync.
   headers.set(
     'Content-Security-Policy',
     "default-src 'self'; " +
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
       "style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://server.arcgisonline.com; " +
+      "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://server.arcgisonline.com; " +
       "font-src 'self'; " +
-      "connect-src 'self' https://docs.google.com; " +
+      "connect-src 'self' https://docs.google.com https://nominatim.openstreetmap.org; " +
       "frame-src 'self' https://www.google.com; " +
       "object-src 'none'; " +
       "base-uri 'self'; " +
@@ -80,6 +86,14 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
     'Permissions-Policy',
     'camera=(), microphone=(), geolocation=()',
   );
+
+  // ── X-Robots-Tag (admin only) ───────────────────────────────────────────
+  // Keep the moderation queue and its API out of search results. This is
+  // hygiene, not access control — the gate is the session check in
+  // /api/admin/*, which is what actually stops an anonymous request.
+  if (context.url.pathname.startsWith('/admin') || context.url.pathname.startsWith('/api/admin')) {
+    headers.set('X-Robots-Tag', 'noindex, nofollow');
+  }
 
   return new Response(response.body, {
     status: response.status,

@@ -96,6 +96,12 @@ function appendRow(sheet, body) {
 }
 
 // Return every row whose status is exactly "pending".
+//
+// `row` is the 1-based sheet row. It's what lets the admin UI moderate a
+// submission that has no photo: the photo is optional on the submit form, so
+// photo_url — the usual identifier — can be empty. setStatus re-checks the row
+// is still pending before writing, so a number that went stale between this call
+// and the write fails closed instead of clobbering a moderated row.
 function listPending(sheet) {
   const data = sheet.getDataRange().getValues();
   const { idx } = headerIndex(sheet);
@@ -105,6 +111,7 @@ function listPending(sheet) {
   for (let r = 1; r < data.length; r++) {
     if (cell(data[r], 'status').toLowerCase() !== 'pending') continue;
     pending.push({
+      row: r + 1,
       name: cell(data[r], 'name'),
       latitude: cell(data[r], 'latitude'),
       longitude: cell(data[r], 'longitude'),
@@ -117,32 +124,58 @@ function listPending(sheet) {
   return pending;
 }
 
-// Set one row's status, identified by its (unique) photo_url. Matching by URL
-// instead of row number is robust against rows being added/moved between the
-// listPending call and this one.
+// Set one row's status, identified by its (unique) photo_url when it has one,
+// or by the row number from listPending when it does not.
+//
+// photo_url is preferred: matching by URL instead of row number is robust
+// against rows being added or moved between the listPending call and this one.
+// But the submit form makes the photo OPTIONAL, so a photo-less pending row has
+// an empty photo_url and can only be addressed by number. To keep that safe, the
+// row-number path refuses to write unless the row is *still* pending — a stale
+// number then fails closed rather than overwriting an already-moderated row.
 function setStatus(sheet, body) {
   const status = String(body.status || '').trim().toLowerCase();
   if (ALLOWED_STATUSES.indexOf(status) === -1) {
     return { ok: false, error: 'bad status: ' + status };
   }
   const target = String(body.photo_url || '').trim();
-  if (!target) {
-    return { ok: false, error: 'photo_url required' };
+  const row = Number(body.row);
+  const hasRow = Number.isInteger(row) && row > 1;
+  if (!target && !hasRow) {
+    return { ok: false, error: 'photo_url or row required' };
   }
 
   const data = sheet.getDataRange().getValues();
   const { idx } = headerIndex(sheet);
-  if (idx['photo_url'] == null || idx['status'] == null) {
-    return { ok: false, error: 'missing photo_url/status columns' };
+  if (idx['status'] == null) {
+    return { ok: false, error: 'missing status column' };
   }
 
-  for (let r = 1; r < data.length; r++) {
-    if (String(data[r][idx['photo_url']] == null ? '' : data[r][idx['photo_url']]).trim() === target) {
-      sheet.getRange(r + 1, idx['status'] + 1).setValue(status);
-      return { ok: true, row: r + 1, status: status };
+  if (target) {
+    if (idx['photo_url'] == null) {
+      return { ok: false, error: 'missing photo_url column' };
     }
+    for (let r = 1; r < data.length; r++) {
+      if (String(data[r][idx['photo_url']] == null ? '' : data[r][idx['photo_url']]).trim() === target) {
+        sheet.getRange(r + 1, idx['status'] + 1).setValue(status);
+        return { ok: true, row: r + 1, status: status };
+      }
+    }
+    return { ok: false, error: 'photo_url not found' };
   }
-  return { ok: false, error: 'photo_url not found' };
+
+  // Row-number path (photo-less submissions only).
+  if (row > data.length) {
+    return { ok: false, error: 'row out of range' };
+  }
+  const current = String(data[row - 1][idx['status']] == null ? '' : data[row - 1][idx['status']])
+    .trim()
+    .toLowerCase();
+  if (current !== 'pending') {
+    return { ok: false, error: 'row is no longer pending (now: ' + (current || 'blank') + ')' };
+  }
+  sheet.getRange(row, idx['status'] + 1).setValue(status);
+  return { ok: true, row: row, status: status };
 }
 
 function jsonOut(obj) {

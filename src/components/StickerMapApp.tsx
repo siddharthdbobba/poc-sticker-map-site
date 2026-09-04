@@ -65,8 +65,9 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
     let cancelled = false;
     fetch('/api/basemap')
       .then((r) => r.json())
-      .then((d: { cartoKey?: string }) => {
-        if (!cancelled) setCartoKey(d?.cartoKey ?? '');
+      .then((d) => {
+        const parsed = d as { cartoKey?: string };
+        if (!cancelled) setCartoKey(parsed?.cartoKey ?? '');
       })
       .catch(() => {
         // Unreachable route (or a 403) is a normal "no key" state, not an error.
@@ -112,9 +113,10 @@ export default function StickerMapApp({ csvUrl }: { csvUrl: string }) {
     let cancelled = false;
     fetch(`/api/streetview?lat=${selected.latitude}&lng=${selected.longitude}`)
       .then((r) => r.json())
-      .then((d: { available?: boolean; embedKey?: string }) => {
+      .then((d) => {
+        const parsed = d as { available?: boolean; embedKey?: string };
         if (!cancelled) {
-          setStreetView({ available: Boolean(d?.available), embedKey: d?.embedKey ?? '' });
+          setStreetView({ available: Boolean(parsed?.available), embedKey: parsed?.embedKey ?? '' });
         }
       })
       .catch(() => {

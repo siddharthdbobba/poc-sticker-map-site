@@ -1,0 +1,41 @@
+---
+/**
+ * /admin — moderation queue for pending submissions.
+ *
+ * Static page: it holds no secrets and renders nothing sensitive. The gate is
+ * the API — every /api/admin/* route requires a live session — so prerendering
+ * this shell is safe and keeps it off the Worker's hot path.
+ *
+ * It is deliberately not linked from the nav; officers reach it by URL. The
+ * middleware sends X-Robots-Tag: noindex for /admin so it stays out of search.
+ */
+import Base from '../layouts/Base.astro';
+import AdminPanel from '../components/AdminPanel';
+---
+
+<Base title="Moderation | POC Sticker Map">
+  <main class="container page">
+    <header class="page-head">
+      <h1>🛡️ Moderation</h1>
+      <p class="lead">
+        Review submissions before they appear on the public map. Approve
+        publishes a sighting, defer hides it for a second look, reject hides it
+        for good.
+      </p>
+    </header>
+
+    <AdminPanel client:only="react">
+      <div slot="fallback" class="map-skeleton" style="height: 200px"></div>
+    </AdminPanel>
+  </main>
+</Base>
+
+<style>
+  .page { padding: 2rem 1rem 3rem; }
+  .page-head {
+    border-top: 4px solid var(--accent);
+    padding-top: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .lead { color: var(--muted); max-width: 46ch; }
+</style>
