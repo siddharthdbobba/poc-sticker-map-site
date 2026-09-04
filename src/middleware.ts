@@ -6,7 +6,7 @@
  * directly to Cloudflare Workers (no proxy in front).
  *
  * The CSP is intentionally permissive enough to allow:
- *   - Leaflet map tiles (OSM, Esri)
+ *   - Leaflet map tiles (OSM, CARTO)
  *   - Google Maps Embed (Street View iframe)
  *   - Google Docs viewer (info modal iframe)
  *   - Inline scripts/styles (React hydration, Astro islands)
@@ -28,7 +28,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   // Tight default: only same-origin. Exceptions granted per resource type.
   // 'unsafe-inline' / 'unsafe-eval' needed for Astro's hydration island
   // scripts and React in dev/prod. Tile sources: OSM (standard street) and
-  // Esri ArcGIS (dark theme). connect-src includes docs.google.com for the
+  // CARTO (dark theme). connect-src includes docs.google.com for the
   // spreadsheet export. frame-src covers the Street View embed and the
   // Google Docs viewer fallback. form-action locked to self.
   headers.set(
@@ -36,7 +36,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
     "default-src 'self'; " +
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
       "style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: https://tile.openstreetmap.org https://server.arcgisonline.com; " +
+      "img-src 'self' data: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com; " +
       "font-src 'self'; " +
       "connect-src 'self' https://docs.google.com; " +
       "frame-src 'self' https://www.google.com; " +
