@@ -13,9 +13,15 @@
  * SETUP (first time)
  *   1. Spreadsheet → Extensions → Apps Script. Paste this file.
  *   2. Set TOKEN below to a long random string (must equal SHEET_WEBHOOK_TOKEN).
- *   3. Header row must read (exact names):
+ *   3. The status column's DROPDOWN must list every status this file writes:
+ *        active | pending | rejected | review
+ *      The sheet uses a Table + data validation, and Tables ENFORCE the column
+ *      type: setValue() THROWS on a value that isn't in the dropdown, which
+ *      surfaces as a failed execution and a generic 502 from /api/admin/status.
+ *      Symptom: approve works (active is listed) but defer/reject both fail.
+ *   4. Header row must read (exact names):
  *        name | latitude | longitude | date | description | photo_url | placed_by | status
- *   4. Deploy → New deployment → type "Web app" →
+ *   5. Deploy → New deployment → type "Web app" →
  *        Execute as: Me   |   Who has access: Anyone
  *      Copy the ".../exec" URL. Set the Worker secrets:
  *        wrangler secret put SHEET_WEBHOOK_URL    → the /exec URL
