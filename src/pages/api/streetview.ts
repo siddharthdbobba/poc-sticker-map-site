@@ -124,8 +124,11 @@ export const GET: APIRoute = async ({ url, request }) => {
     // iframe) also authorizes this server-side call. Harmless if the key has no
     // referrer restriction (a dedicated, unrestricted metadata key still works).
     const res = await fetch(metaUrl, { headers: { Referer: `${url.origin}/` } });
-    if (!res.ok) return json({ available: false }, false);
-    const data = (await res.json()) as { status?: string };
+    if (!res.ok) {
+      console.warn(`[streetview] Google HTTP ${res.status}`);
+      return json({ available: false }, false);
+    }
+    const data = (await res.json()) as { status?: string; error_message?: string };
     // "OK" → a pano exists. "ZERO_RESULTS" / "NOT_FOUND" → definitively none.
     // Anything else (OVER_QUERY_LIMIT, REQUEST_DENIED, …) is transient/config —
     // don't cache it as a hard "no".
@@ -141,8 +144,20 @@ export const GET: APIRoute = async ({ url, request }) => {
     if (data.status === 'ZERO_RESULTS' || data.status === 'NOT_FOUND') {
       return json({ available: false }, true);
     }
+    // Everything else is a configuration or quota problem — a disabled API, a
+    // key whose referrer restriction rejects this call, billing switched off.
+    // The route deliberately fails closed, which means such a break is INVISIBLE
+    // from the outside: Street View just quietly stops appearing on every
+    // marker. Log the reason so `wrangler tail` can answer "why is it off?"
+    // without a code change. (This is how the feature was found dead in
+    // production: every point, including the Eiffel Tower, returned false.)
+    console.warn(
+      `[streetview] Google status=${data.status ?? 'none'}` +
+        (data.error_message ? ` — ${data.error_message}` : ''),
+    );
     return json({ available: false }, false);
-  } catch {
+  } catch (err) {
+    console.warn(`[streetview] request failed: ${err instanceof Error ? err.message : String(err)}`);
     return json({ available: false }, false);
   }
 };
