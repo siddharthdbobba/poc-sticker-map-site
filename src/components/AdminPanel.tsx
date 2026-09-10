@@ -13,15 +13,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { reverseGeocodeAll, shortPlace } from '../lib/geocode';
 
+/** Matches PendingSubmission in src/lib/pending.ts. */
 interface PendingRow {
-  row?: number;
+  id: string;
   name: string;
-  latitude: string;
-  longitude: string;
+  latitude: number;
+  longitude: number;
   date: string;
   description: string;
-  photo_url: string;
-  placed_by: string;
+  photoUrl: string;
+  placedBy: string;
+  submittedAt: string;
+  deferred?: boolean;
 }
 
 type Verdict = 'active' | 'rejected' | 'review';
@@ -32,14 +35,9 @@ const VERDICTS: { status: Verdict; label: string; kind: string }[] = [
   { status: 'rejected', label: 'Reject', kind: 'reject' },
 ];
 
-/** A row's identity for the status write: photo_url when it has one, else row. */
-function identify(item: PendingRow): { photo_url?: string; row?: number } {
-  return item.photo_url ? { photo_url: item.photo_url } : { row: item.row };
-}
-
-/** Stable per-item key — photo_url is unique; photo-less rows fall back to row. */
+/** Stable per-item key. The queue entry's own id, unique by construction. */
 function itemKey(item: PendingRow): string {
-  return item.photo_url || `row-${item.row}`;
+  return item.id;
 }
 
 export default function AdminPanel() {
@@ -108,8 +106,8 @@ export default function AdminPanel() {
     const points = pending
       .map((item) => ({
         key: itemKey(item),
-        latitude: Number(item.latitude),
-        longitude: Number(item.longitude),
+        latitude: item.latitude,
+        longitude: item.longitude,
       }))
       .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
     if (points.length === 0) return;
@@ -160,7 +158,7 @@ export default function AdminPanel() {
       const res = await fetch('/api/admin/status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...identify(item), status }),
+        body: JSON.stringify({ id: item.id, status }),
       });
       if (res.status === 401) {
         setAuthed(false);
@@ -241,9 +239,9 @@ export default function AdminPanel() {
         const isWorking = working.has(key);
         return (
           <article className="card admin-item" key={key}>
-            {item.photo_url ? (
-              <a href={item.photo_url} target="_blank" rel="noreferrer">
-                <img src={item.photo_url} alt="" className="admin-thumb" loading="lazy" />
+            {item.photoUrl ? (
+              <a href={item.photoUrl} target="_blank" rel="noreferrer">
+                <img src={item.photoUrl} alt="" className="admin-thumb" loading="lazy" />
               </a>
             ) : (
               <div className="admin-thumb admin-thumb-empty">No photo</div>
@@ -252,21 +250,20 @@ export default function AdminPanel() {
             <div className="admin-item-body">
               <h3>{item.name || 'Untitled sighting'}</h3>
               <p className="admin-muted">
-                {item.placed_by ? `Placed by ${item.placed_by}` : 'No name given'}
+                {item.placedBy ? `Placed by ${item.placedBy}` : 'No name given'}
                 {item.date ? ` · ${item.date}` : ''}
-                {item.latitude && item.longitude ? ` · ${item.latitude}, ${item.longitude}` : ''}
+                {` · ${item.latitude}, ${item.longitude}`}
+                {item.deferred ? ' · deferred' : ''}
               </p>
               {/* Where those coordinates actually land. Read this, not the
                   digits — it is what catches a dropped minus sign. */}
-              {item.latitude && item.longitude && (
-                <p className="admin-place">
-                  {places[key] === undefined
-                    ? '📍 locating…'
-                    : places[key] === null
-                      ? '📍 could not identify this point'
-                      : `📍 ${shortPlace(places[key] as string)}`}
-                </p>
-              )}
+              <p className="admin-place">
+                {places[key] === undefined
+                  ? '📍 locating…'
+                  : places[key] === null
+                    ? '📍 could not identify this point'
+                    : `📍 ${shortPlace(places[key] as string)}`}
+              </p>
               {item.description && <p className="admin-desc">{item.description}</p>}
 
               <div className="admin-actions">

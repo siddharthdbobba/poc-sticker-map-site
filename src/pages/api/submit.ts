@@ -4,17 +4,23 @@
  * Receives a sighting from the /submit page (multipart form):
  *   photo (File) + name, latitude, longitude, date, description, placedBy
  *
- * Flow: validate → store the photo in R2 (PHOTOS binding) → append a row to the
- * Google Sheet "Pending" tab via the Apps Script web app. The map never reads
- * Pending; the owner approves by moving the row to the Live tab (gid=0).
+ * Flow: validate → store the photo in R2 (PHOTOS binding) → put the submission
+ * in the KV moderation queue (see src/lib/pending.ts).
  *
- * Runs on the Worker (prerender = false) so it can reach the R2 binding and the
- * SHEET_WEBHOOK_* secrets via locals.runtime.env.
+ * It deliberately does NOT touch the Google Sheet. The sheet is shared "anyone
+ * with the link can view", so anything written there is public immediately —
+ * a row marked "pending" was hidden from the map by client-side filtering only,
+ * while its text, coordinates and photo URL were readable by anyone. Unapproved
+ * content therefore never goes near it: approving a submission in /admin is what
+ * writes the row.
+ *
+ * Runs on the Worker (prerender = false) so it can reach the R2 and KV bindings.
  */
 
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { clientIp, overRateLimit } from '../../lib/admin-auth';
+import { putPending } from '../../lib/pending';
 
 export const prerender = false;
 
@@ -156,8 +162,8 @@ export const POST: APIRoute = async ({ request }) => {
   ) {
     return json({ ok: false, error: 'Choose a valid location from the search.' }, 400);
   }
-  // Fail fast if submissions aren't wired up — don't orphan a photo in R2.
-  if (!env.SHEET_WEBHOOK_URL || !env.SHEET_WEBHOOK_TOKEN) {
+  // Fail fast if the queue isn't wired up — don't orphan a photo in R2.
+  if (!env.SESSION) {
     return json({ ok: false, error: 'Submissions are not configured yet.' }, 503);
   }
 
@@ -166,6 +172,7 @@ export const POST: APIRoute = async ({ request }) => {
   // type) and store it in R2. With no photo, the row's photo_url stays blank and
   // the map shows its 🗺️ placeholder for that pin.
   let photoUrl = '';
+  let photoKey = '';
   if (photo instanceof File && photo.size > 0) {
     if (photo.size > MAX_BYTES) {
       return json({ ok: false, error: 'Photo is too large (8 MB max).' }, 413);
@@ -178,37 +185,28 @@ export const POST: APIRoute = async ({ request }) => {
     // Store the photo in R2 under an unguessable key.
     const key = `sightings/${crypto.randomUUID()}.${sniff.ext}`;
     await env.PHOTOS.put(key, buf, { httpMetadata: { contentType: sniff.contentType } });
+    photoKey = key;
     photoUrl = new URL(`/photos/${key}`, request.url).toString();
   }
 
-  // ── Append the row to the Google Sheet "Pending" tab ─────────────────────
+  // ── Queue it for review ──────────────────────────────────────────────────
+  // KV, not the sheet: see the header comment. Nothing here is public until an
+  // officer approves it.
   try {
-    const res = await fetch(env.SHEET_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: env.SHEET_WEBHOOK_TOKEN,
-        name,
-        latitude,
-        longitude,
-        date,
-        description,
-        photo_url: photoUrl,
-        placed_by: placedBy,
-      }),
+    await putPending(env.SESSION, {
+      id: crypto.randomUUID(),
+      name,
+      latitude,
+      longitude,
+      date,
+      description,
+      photoUrl,
+      photoKey,
+      placedBy,
+      submittedAt: new Date().toISOString(),
     });
-    // Apps Script web apps return 200 even when they reject the token, so also
-    // confirm the `ok` flag in the body.
-    const text = await res.text();
-    let ok = false;
-    try {
-      ok = (JSON.parse(text) as { ok?: boolean }).ok === true;
-    } catch {
-      ok = false;
-    }
-    if (!res.ok || !ok) throw new Error(`sheet webhook rejected (${res.status})`);
   } catch {
-    // Photo is already stored; the row append is what failed. Surface a retryable error.
+    // The photo is already stored; the queue write is what failed. Retryable.
     return json({ ok: false, error: 'Could not record the sighting. Please try again later.' }, 502);
   }
 

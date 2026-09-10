@@ -38,8 +38,9 @@ carries a GPS fix in its EXIF, the location and date are **filled in
 automatically** (and reverse-geocoded to a place name) — the submitter can clear
 or override it. That Worker route
 stores the photo in **R2** and appends a row to the data tab via a small **Apps Script
-web app** (`apps-script/Code.gs`) with `status = "pending"`. The map hides pending
-rows — you approve a sighting by changing its **`status`** cell to `active`.
+web app** (`apps-script/Code.gs`) with `status = "pending"`. Submissions are held in a **Worker-side queue (KV)**, never in the sheet — the
+sheet is link-shared, so anything written there is public immediately. You
+approve at **`/admin`**, and approving is what appends the row to the sheet.
 
 One-time setup:
 

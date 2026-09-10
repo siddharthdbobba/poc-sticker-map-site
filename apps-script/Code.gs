@@ -127,7 +127,10 @@ function appendRow(sheet, body) {
   };
   const { headers } = headerIndex(sheet);
   sheet.appendRow(headers.map((h) => (h in values ? values[h] : '')));
-  return { ok: true };
+  // Return the row number so the caller can address the row it just created —
+  // /api/admin/status needs it to flip a photo-less approved row to "active",
+  // since photo_url (its usual handle) is empty for those.
+  return { ok: true, row: sheet.getLastRow() };
 }
 
 // Return every row whose status is exactly "pending".
