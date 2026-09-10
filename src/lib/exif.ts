@@ -168,9 +168,18 @@ function parseTiff(view: DataView, tiff: number, size: number): PhotoMeta {
     const lon = dms(view, gps.get(TAG_GPS_LON), le, size);
     const latRef = ascii(view, gps.get(TAG_GPS_LAT_REF), size);
     const lonRef = ascii(view, gps.get(TAG_GPS_LON_REF), size);
-    if (lat !== null && lon !== null) {
-      const latitude = latRef?.toUpperCase() === 'S' ? -lat : lat;
-      const longitude = lonRef?.toUpperCase() === 'W' ? -lon : lon;
+    // The ref tags carry the SIGN, and GPSLatitude/GPSLongitude are unsigned —
+    // so without a valid ref the hemisphere is genuinely unknown. Defaulting to
+    // north/east would invent a coordinate on the wrong side of the planet and
+    // present it with full confidence, which is precisely the failure this map
+    // has already been bitten by: two Alaska sightings sat on the live map in
+    // the Russian Far East because a longitude lost its minus sign. An absent
+    // or unrecognised ref therefore means NO fix, not a guess.
+    const latSign = latRef?.toUpperCase() === 'N' ? 1 : latRef?.toUpperCase() === 'S' ? -1 : 0;
+    const lonSign = lonRef?.toUpperCase() === 'E' ? 1 : lonRef?.toUpperCase() === 'W' ? -1 : 0;
+    if (lat !== null && lon !== null && latSign !== 0 && lonSign !== 0) {
+      const latitude = lat * latSign;
+      const longitude = lon * lonSign;
       // A photo with GPS hardware but no fix writes 0/0 — the null island, not
       // a place anyone put a sticker. Treat it as "no location".
       if (

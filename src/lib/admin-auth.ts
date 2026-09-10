@@ -174,20 +174,29 @@ export function clientIp(request: Request): string {
 }
 
 /**
- * A generic fixed-window counter in KV, for throttling anything keyed by client
- * IP. The admin login has its own failure-only variant above (a working password
- * should never be penalised); this one counts *every* call, which is what a
- * public write endpoint needs.
+ * A best-effort per-IP request counter in KV.
  *
- * Returns true when the caller is over the limit for this window.
+ * Honest about what it is: KV is eventually consistent and offers no
+ * compare-and-swap, so this read-then-write cannot be atomic. Under genuine
+ * concurrency several callers read the same value and one write wins, letting
+ * more than `limit` requests through. It therefore raises the cost of a
+ * sustained flood — the case it is for — and does not enforce a hard ceiling.
+ * A real ceiling needs Cloudflare Rate Limiting or a Durable Object; this is
+ * abuse friction on a club sticker map, priced accordingly.
+ *
+ * Two consequences worth knowing rather than discovering:
+ *  - KV rejects more than one write per second to the same key, so a burst can
+ *    make `put` throw. That is caught here and treated as "allowed", because a
+ *    throttling counter must never turn into a 500 on the endpoint it guards.
+ *  - The TTL is anchored to the first request of a window, not refreshed on
+ *    every accepted one. Refreshing would make the window slide forward
+ *    indefinitely under steady traffic and never reset.
  *
  * Fails OPEN when KV is unavailable, matching isRateLimited: losing the counter
- * should degrade to "unthrottled", not to "nobody can submit". The tradeoff is
- * deliberate — this is abuse control on a club sticker map, not a security
- * boundary, and a false lockout is the worse failure.
+ * should degrade to "unthrottled", not to "nobody can submit". A false lockout
+ * is the worse failure here.
  *
- * A fixed window (rather than a sliding one) can allow up to 2x the limit across
- * a window boundary. That is fine at these numbers and costs one KV read.
+ * Returns true when the caller is over the limit for this window.
  */
 export async function overRateLimit(
   bucket: string,
@@ -198,11 +207,32 @@ export async function overRateLimit(
 ): Promise<boolean> {
   if (!kv || !ip) return false;
   const key = `rl:${bucket}:${ip}`;
-  const raw = await kv.get(key);
-  const count = raw === null ? 0 : Number(raw);
-  if (count >= limit) return true;
-  await kv.put(key, String(count + 1), { expirationTtl: windowSeconds });
-  return false;
+  try {
+    const raw = await kv.get(key);
+    let count = 0;
+    let startedAt = Date.now();
+    if (raw !== null) {
+      // Stored as "count:windowStartMs". An older bare-number value (or any
+      // garbage) parses to NaN and simply starts a fresh window.
+      const [c, t] = raw.split(':');
+      const parsedCount = Number(c);
+      const parsedStart = Number(t);
+      if (Number.isFinite(parsedCount)) count = parsedCount;
+      if (Number.isFinite(parsedStart)) startedAt = parsedStart;
+    }
+    if (count >= limit) return true;
+
+    // Anchor the TTL to the window's start so the window expires on schedule
+    // instead of sliding forward with every accepted request.
+    const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+    const remaining = Math.max(1, windowSeconds - Math.max(0, elapsed));
+    await kv.put(key, `${count + 1}:${startedAt}`, { expirationTtl: remaining });
+    return false;
+  } catch {
+    // A KV hiccup (including its one-write-per-second-per-key limit) must not
+    // become a 500 on the endpoint this is protecting.
+    return false;
+  }
 }
 
 /**

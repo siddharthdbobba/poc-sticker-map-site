@@ -83,6 +83,34 @@ test('rows with unparseable coordinates are dropped', () => {
   assert.deepEqual(locs.map((l) => l.name), ['Good']);
 });
 
+// Codex found these three: every field the parser cannot locate comes back as
+// '', including `status` — and a blank status reads as visible. So a row whose
+// shape is not understood used to default to *published*. The structural check
+// exists to make that fall the other way.
+test('a row with an unterminated quote is dropped, not published', () => {
+  const locs = parseCSV(`${HEADER}\nSneak,1,2,,abc"unterminated,,Sid,pending`);
+  assert.deepEqual(locs, []);
+});
+
+test('a stray unquoted comma cannot shift a pending row into visibility', () => {
+  const locs = parseCSV(`${HEADER}\nSneak,1,2,,a,b,extra,,Sid,pending`);
+  assert.deepEqual(locs, []);
+});
+
+test('a truncated row is dropped rather than treated as blank-status', () => {
+  const locs = parseCSV(`${HEADER}\nSecret,1,2`);
+  assert.deepEqual(locs, []);
+});
+
+test('a well-formed row with every column present still passes', () => {
+  const locs = parseCSV(
+    `${HEADER}\n` +
+      'Fine,40.1,-86.9,2026-01-01,ok,,Sid,active\n' +
+      'Legacy,41.1,-87.9,2026-01-02,ok,,Sid,\n',
+  );
+  assert.deepEqual(locs.map((l) => l.name), ['Fine', 'Legacy']);
+});
+
 test('an empty or header-only document yields no locations', () => {
   assert.deepEqual(parseCSV(''), []);
   assert.deepEqual(parseCSV(HEADER), []);

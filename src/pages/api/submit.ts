@@ -105,9 +105,14 @@ export const POST: APIRoute = async ({ request }) => {
       return '';
     }
   })();
+  // When Origin is present it is authoritative: a request that declares a
+  // foreign origin must not be rescued by a Referer that happens to look right.
+  // Referer is only consulted when Origin is absent, which is the same-origin
+  // navigation case browsers omit it for.
   const isAllowed =
-    (origin !== '' && ALLOWED_ORIGINS.includes(origin)) ||
-    (refererOrigin !== '' && ALLOWED_ORIGINS.includes(refererOrigin));
+    origin !== ''
+      ? ALLOWED_ORIGINS.includes(origin)
+      : refererOrigin !== '' && ALLOWED_ORIGINS.includes(refererOrigin);
   if (!origin && !referer) {
     // No referrer info at all — likely a direct curl/wget. Reject.
     return json({ ok: false, error: 'Missing origin.' }, 403);

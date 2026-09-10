@@ -37,6 +37,23 @@ export function parseCSV(csv: string): StickerLocation[] {
   return rows
     .slice(1)
     .map((values, index) => {
+      // Structural check, and it is a moderation control rather than tidiness.
+      //
+      // Every field this parser cannot find comes back as '' — including
+      // `status`, and a blank status reads as VISIBLE (deliberately, so legacy
+      // rows without the column still show). So any row whose shape we do not
+      // understand silently defaults to *published*, which is the wrong way for
+      // this failure to fall. A row with the wrong number of fields is exactly
+      // that: an unterminated quote swallowing the rest of the file, a stray
+      // unquoted comma shifting every later column left, or a truncated row.
+      // In each case `status` is not where we think it is and its real value is
+      // unknowable, so the row is dropped rather than trusted.
+      //
+      // Safe to enforce: a sheet published by Google emits one field per column
+      // for every row (verified against the live feed — 23 rows, 8 fields each).
+      // Anything that does not is a hand-edited or truncated feed, not data.
+      if (values.length !== headers.length) return null;
+
       const row: Record<string, string> = {};
       headers.forEach((h, i) => {
         row[h] = values[i]?.trim() ?? '';
@@ -58,7 +75,8 @@ export function parseCSV(csv: string): StickerLocation[] {
     // Hidden statuses: "pending" (awaiting review), "rejected" (declined), and
     // "review" (deferred to a human). Empty/"active"/anything else stays visible,
     // so existing rows without a status still show.
-    .filter((loc) => {
+    .filter((loc): loc is StickerLocation => {
+      if (loc === null) return false;
       const status = loc.status.trim().toLowerCase();
       return (
         !isNaN(loc.latitude) &&

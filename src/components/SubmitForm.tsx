@@ -113,7 +113,7 @@ export default function SubmitForm() {
   const [processing, setProcessing] = useState(false);
   // Set when the location currently in the form came from the photo's EXIF, so
   // the UI can say so and offer one click to take it back.
-  const [autoLocated, setAutoLocated] = useState(false);
+  const [autoLocated, setAutoLocatedState] = useState(false);
   const [readingExif, setReadingExif] = useState(false);
   // The place the current coordinates actually resolve to. Shown in Lat/Lng mode
   // as a sanity check: a dropped minus sign is invisible in the numbers but
@@ -132,9 +132,6 @@ export default function SubmitForm() {
   const [name, setName] = useState('');
   const [placedBy, setPlacedBy] = useState('');
   const [date, setDate] = useState(todayISO());
-  // Today's date is a guess, not an answer — EXIF may overwrite it. Once the
-  // submitter types a date themselves it is an answer, and stays put.
-  const [dateTouched, setDateTouched] = useState(false);
   const [description, setDescription] = useState('');
 
   const [status, setStatus] = useState<Status>('idle');
@@ -156,6 +153,14 @@ export default function SubmitForm() {
   // overwrite a person's own answer. A ref, not state: applyPhotoMeta reads this
   // after an await, where a captured state value would be a stale render's.
   const userSetLocation = useRef(false);
+  // Today's date is a guess, not an answer — EXIF may overwrite it. Once the
+  // submitter types a date themselves it is an answer and stays put. A ref
+  // rather than state because the only reader runs after two awaits, where a
+  // captured state value would be from the render that started them.
+  const dateTouchedRef = useRef(false);
+  // Mirrors `autoLocated` for the same reason. The state drives the badge; the
+  // ref is what post-await code is allowed to read.
+  const autoLocatedRef = useRef(false);
 
   // Debounced client-side geocoding (Nominatim), address mode only. Light use only.
   useEffect(() => {
@@ -191,7 +196,11 @@ export default function SubmitForm() {
   // own lookup — this covers the case nothing else does: coordinates typed or
   // pasted by hand, which is exactly where a sign gets dropped.
   useEffect(() => {
-    if (mode !== 'coords' || !location) {
+    // Skip while the EXIF path owns the location: applyPhotoMeta switches to
+    // coords mode and runs its own lookup for the same point, so without this
+    // both fire — duplicate traffic, and two requests inside the one-second
+    // interval Nominatim's usage policy asks for.
+    if (mode !== 'coords' || !location || autoLocated) {
       setCoordPlace(null);
       setNamingCoords(false);
       return;
@@ -213,7 +222,7 @@ export default function SubmitForm() {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [mode, location]);
+  }, [mode, location, autoLocated]);
 
   // Revoke the object URL when the preview changes / unmounts.
   useEffect(() => {
@@ -241,6 +250,12 @@ export default function SubmitForm() {
     // so this is the only moment the GPS fix still exists.
     const meta = await readPhotoMeta(file);
     const result = await processImage(file);
+    // Both awaits above take real time (a big HEIC decodes slowly), so choosing
+    // a slow photo and then a fast one can land them out of order. Everything
+    // past this point writes shared form state, so the stale run must stop here
+    // — otherwise photo A's blob becomes the upload while photo B's name and
+    // location sit in the fields, and the submission is a mismatched pair.
+    if (token !== photoToken.current) return;
     if (result.blob.size > MAX_BYTES) {
       setProcessing(false);
       setProcessed(null);
@@ -260,11 +275,26 @@ export default function SubmitForm() {
    * form has none, and the date only while it is still the untouched default.
    */
   async function applyPhotoMeta(meta: Awaited<ReturnType<typeof readPhotoMeta>>, token: number) {
-    if (meta.takenOn && !dateTouched && meta.takenOn <= todayISO()) setDate(meta.takenOn);
+    // dateTouchedRef, not the `dateTouched` state: this runs after two awaits,
+    // and the state captured in this closure is from the render that started
+    // them. Someone who types a date while a large photo is decoding would
+    // otherwise have it overwritten by DateTimeOriginal.
+    if (meta.takenOn && !dateTouchedRef.current && meta.takenOn <= todayISO()) {
+      setDate(meta.takenOn);
+    }
 
     const { latitude, longitude } = meta;
-    if (latitude === undefined || longitude === undefined) return;
     if (userSetLocation.current) return; // they told us where — don't second-guess it
+
+    // A photo with no fix must not leave the PREVIOUS photo's location sitting
+    // in the form: the submitter swapped the picture, and silently keeping the
+    // old coordinates would attach this photo to the last one's place. Only an
+    // auto-filled location is cleared — a typed one is theirs and is protected
+    // by the check above.
+    if (latitude === undefined || longitude === undefined) {
+      if (autoLocatedRef.current) clearAutoLocation();
+      return;
+    }
 
     // Coordinates first, name second: the fix alone is enough to submit, so
     // commit it before the network call that might not come back.
@@ -278,8 +308,11 @@ export default function SubmitForm() {
 
     setReadingExif(true);
     const placeName = await reverseGeocode(latitude, longitude);
-    if (token !== photoToken.current) return; // a newer photo owns the form now
+    // Clear the spinner first, unconditionally: returning early on a stale
+    // token while `readingExif` was still true left the badge saying "looking
+    // up the place name…" forever.
     setReadingExif(false);
+    if (token !== photoToken.current) return; // a newer photo owns the form now
     if (!placeName) return; // the coordinates stand on their own
 
     // Naming succeeded — show it the way a picked search result looks. Matching
@@ -288,6 +321,16 @@ export default function SubmitForm() {
     setLocation({ ...coords, name: placeName });
     setQuery(placeName);
     setName((current) => current.trim() || placeName.split(',')[0].trim());
+  }
+
+  /**
+   * Set the "location came from the photo" flag. Always through here, never
+   * `setAutoLocatedState` directly, so the ref post-await code reads can never
+   * fall out of step with the state the badge renders from.
+   */
+  function setAutoLocated(value: boolean) {
+    autoLocatedRef.current = value;
+    setAutoLocatedState(value);
   }
 
   /** Drop an EXIF-derived location and hand the fields back to the submitter. */
@@ -407,7 +450,7 @@ export default function SubmitForm() {
     setName('');
     setPlacedBy('');
     setDate(todayISO());
-    setDateTouched(false);
+    dateTouchedRef.current = false;
     photoToken.current++;
     userSetLocation.current = false;
     setAutoLocated(false);
@@ -736,7 +779,7 @@ export default function SubmitForm() {
             value={date}
             max={todayISO()}
             onChange={(e) => {
-              setDateTouched(true);
+              dateTouchedRef.current = true;
               setDate(e.target.value);
             }}
             style={inputStyle}
