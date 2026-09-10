@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { reverseGeocodeAll, shortPlace } from '../lib/geocode';
 
 interface PendingRow {
   row?: number;
@@ -53,6 +54,11 @@ export default function AdminPanel() {
   // Keys of rows currently being written, so their buttons disable individually.
   const [working, setWorking] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState('');
+  // Resolved place name per queued row, keyed by itemKey. Reviewing coordinates
+  // as digits is how two Alaska sightings were approved with the longitude sign
+  // dropped, putting them in the Russian Far East on the live map. A name makes
+  // that mistake unmissable, so the queue names every row before you judge it.
+  const [places, setPlaces] = useState<Record<string, string | null>>({});
 
   const loadQueue = useCallback(async () => {
     setLoadingQueue(true);
@@ -65,6 +71,7 @@ export default function AdminPanel() {
       }
       const data = (await res.json()) as { ok?: boolean; pending?: PendingRow[]; error?: string };
       if (!data.ok) throw new Error(data.error ?? 'Could not load the queue.');
+      setPlaces({});
       setPending(data.pending ?? []);
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : 'Could not load the queue.');
@@ -93,6 +100,23 @@ export default function AdminPanel() {
   useEffect(() => {
     if (authed) void loadQueue();
   }, [authed, loadQueue]);
+
+  // Name every queued row. Serialised inside reverseGeocodeAll to respect
+  // Nominatim's one-request-per-second policy, so names appear progressively
+  // rather than all at once — which is fine, they are a review aid, not a gate.
+  useEffect(() => {
+    const points = pending
+      .map((item) => ({
+        key: itemKey(item),
+        latitude: Number(item.latitude),
+        longitude: Number(item.longitude),
+      }))
+      .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+    if (points.length === 0) return;
+    return reverseGeocodeAll(points, (key, place) =>
+      setPlaces((prev) => ({ ...prev, [key]: place })),
+    );
+  }, [pending]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -232,6 +256,17 @@ export default function AdminPanel() {
                 {item.date ? ` · ${item.date}` : ''}
                 {item.latitude && item.longitude ? ` · ${item.latitude}, ${item.longitude}` : ''}
               </p>
+              {/* Where those coordinates actually land. Read this, not the
+                  digits — it is what catches a dropped minus sign. */}
+              {item.latitude && item.longitude && (
+                <p className="admin-place">
+                  {places[key] === undefined
+                    ? '📍 locating…'
+                    : places[key] === null
+                      ? '📍 could not identify this point'
+                      : `📍 ${shortPlace(places[key] as string)}`}
+                </p>
+              )}
               {item.description && <p className="admin-desc">{item.description}</p>}
 
               <div className="admin-actions">

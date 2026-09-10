@@ -402,6 +402,20 @@ footer {
 .admin-item-body { flex: 1; min-width: 0; }
 .admin-item h3 { margin: 0 0 0.25rem; font-size: 1.05rem; }
 .admin-desc { margin: 0.5rem 0 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+/* The resolved place name for a queued row — the review aid that catches a
+   coordinate with a dropped minus sign. Tinted so the eye lands on it before
+   the raw numbers above it. */
+.admin-place {
+  margin: 0.3rem 0 0;
+  font-size: 0.86rem;
+  color: var(--text);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  display: inline-block;
+  overflow-wrap: anywhere;
+}
 
 .admin-thumb {
   width: 132px;

@@ -29,17 +29,14 @@ export interface StickerLocation {
 }
 
 export function parseCSV(csv: string): StickerLocation[] {
-  const lines = csv.trim().split('\n');
-  if (lines.length < 2) return [];
+  const rows = parseCSVRows(csv);
+  if (rows.length < 2) return [];
 
-  const headers = parseCSVLine(lines[0]).map((h) =>
-    h.trim().toLowerCase().replace(/\s+/g, '_')
-  );
+  const headers = rows[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
 
-  return lines
+  return rows
     .slice(1)
-    .map((line, index) => {
-      const values = parseCSVLine(line);
+    .map((values, index) => {
       const row: Record<string, string> = {};
       headers.forEach((h, i) => {
         row[h] = values[i]?.trim() ?? '';
@@ -73,23 +70,75 @@ export function parseCSV(csv: string): StickerLocation[] {
     });
 }
 
-/** Handles quoted fields (e.g. descriptions with commas) */
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
+/**
+ * Split a whole CSV document into rows of fields.
+ *
+ * This is a single character-wise pass rather than `split('\n')` then a
+ * per-line field split, and the difference is not cosmetic. A quoted field may
+ * legally contain a line break — and does, constantly, because the /submit
+ * description box is a textarea and people press Enter in it. Splitting on
+ * newlines first tears such a row in half, which shifted every later field left
+ * by one: the description was truncated, `placed_by` was lost, and — the part
+ * that mattered — `status` was lost too. A blank status reads as *visible*, so a
+ * PENDING submission with a two-line description published itself on the map,
+ * with no review. Any parser here must therefore honour quotes before newlines.
+ *
+ * Also handles the other half of RFC 4180 that the old splitter dropped: a
+ * doubled quote inside a quoted field ("" ) is one literal quote character, not
+ * a pair of delimiters that cancel out and vanish.
+ *
+ * CRLF is normalised to LF so a sheet exported with Windows line endings does
+ * not leave a stray \r on the last field of every row (which would have made
+ * `status` "active\r" — not equal to "active", though harmlessly so here).
+ */
+export function parseCSVRows(csv: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  for (let i = 0; i < csv.length; i++) {
+    const ch = csv[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        // A doubled quote is an escaped literal quote; a lone one ends the field.
+        if (csv[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+
     if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(field);
+      field = '';
+    } else if (ch === '\n' || ch === '\r') {
+      // Outside quotes a newline ends the row. Swallow the LF of a CRLF pair.
+      if (ch === '\r' && csv[i + 1] === '\n') i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
     } else {
-      current += ch;
+      field += ch;
     }
   }
-  result.push(current);
-  return result;
+
+  // Whatever is still buffered is the last row, unless the file ended on a
+  // newline (in which case there is nothing left and we must not add a blank).
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  // A trailing blank line yields a single empty field — not a real row.
+  return rows.filter((r) => r.length > 1 || r[0] !== '');
 }

@@ -174,6 +174,38 @@ export function clientIp(request: Request): string {
 }
 
 /**
+ * A generic fixed-window counter in KV, for throttling anything keyed by client
+ * IP. The admin login has its own failure-only variant above (a working password
+ * should never be penalised); this one counts *every* call, which is what a
+ * public write endpoint needs.
+ *
+ * Returns true when the caller is over the limit for this window.
+ *
+ * Fails OPEN when KV is unavailable, matching isRateLimited: losing the counter
+ * should degrade to "unthrottled", not to "nobody can submit". The tradeoff is
+ * deliberate — this is abuse control on a club sticker map, not a security
+ * boundary, and a false lockout is the worse failure.
+ *
+ * A fixed window (rather than a sliding one) can allow up to 2x the limit across
+ * a window boundary. That is fine at these numbers and costs one KV read.
+ */
+export async function overRateLimit(
+  bucket: string,
+  ip: string,
+  kv: KVNamespace | undefined,
+  limit: number,
+  windowSeconds: number,
+): Promise<boolean> {
+  if (!kv || !ip) return false;
+  const key = `rl:${bucket}:${ip}`;
+  const raw = await kv.get(key);
+  const count = raw === null ? 0 : Number(raw);
+  if (count >= limit) return true;
+  await kv.put(key, String(count + 1), { expirationTtl: windowSeconds });
+  return false;
+}
+
+/**
  * Origin allowlist, mirroring /api/streetview and /api/basemap. On the admin
  * routes this is defence in depth behind SameSite=Strict, not the primary CSRF
  * control.

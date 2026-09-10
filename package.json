@@ -12,7 +12,8 @@
     "astro": "astro",
     "generate-types": "wrangler types",
     "deploy": "npm run build && wrangler deploy",
-    "check": "astro check"
+    "check": "astro check",
+    "test": "node --experimental-strip-types --test \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.6.0",

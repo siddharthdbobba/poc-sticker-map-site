@@ -14,10 +14,28 @@
 
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
+import { clientIp, overRateLimit } from '../../lib/admin-auth';
 
 export const prerender = false;
 
 const MAX_BYTES = 8 * 1024 * 1024; // 8 MB
+
+/**
+ * Per-IP submission cap. This endpoint writes an R2 object and a spreadsheet row
+ * on every accepted call, and the origin check in front of it is a CSRF control,
+ * not an identity one — a script can set its own headers. Without a cap, one
+ * caller can fill the bucket and the sheet.
+ *
+ * The numbers are set for the real use: someone standing at a trailhead adding
+ * the two or three stickers they just found. Ten in an hour is generous for
+ * that, and hostile for anyone bulk-posting. Counted per IP, so a whole club
+ * trip sharing one hotspot is the case to watch — hence "an hour", not "a day".
+ *
+ * Not a substitute for Cloudflare Turnstile (still unbuilt), which is what stops
+ * a distributed bot rather than a single noisy source.
+ */
+const SUBMIT_LIMIT = 10;
+const SUBMIT_WINDOW_SECONDS = 60 * 60;
 
 /**
  * Identify the image by its magic bytes — we do NOT trust the browser-declared
@@ -76,15 +94,36 @@ export const POST: APIRoute = async ({ request }) => {
     'http://localhost:8787',
     'http://localhost:4321',
   ];
-  const isAllowed = ALLOWED_ORIGINS.some(
-    (o) => origin.startsWith(o) || referer.startsWith(o),
-  );
+  // Origin must match EXACTLY. A prefix test would accept
+  // https://stickers.siddharthbobba.com.evil.example, which starts with the
+  // allowed value but is a different site entirely. Referer legitimately
+  // carries a path, so it is compared by parsed origin rather than by prefix.
+  const refererOrigin = (() => {
+    try {
+      return referer ? new URL(referer).origin : '';
+    } catch {
+      return '';
+    }
+  })();
+  const isAllowed =
+    (origin !== '' && ALLOWED_ORIGINS.includes(origin)) ||
+    (refererOrigin !== '' && ALLOWED_ORIGINS.includes(refererOrigin));
   if (!origin && !referer) {
     // No referrer info at all — likely a direct curl/wget. Reject.
     return json({ ok: false, error: 'Missing origin.' }, 403);
   }
   if (!isAllowed) {
     return json({ ok: false, error: 'Unauthorized origin.' }, 403);
+  }
+
+  // ── Rate limit ───────────────────────────────────────────────────────────
+  // Before parsing the body, so a flood costs us a KV read rather than an 8 MB
+  // multipart parse.
+  if (await overRateLimit('submit', clientIp(request), env.SESSION, SUBMIT_LIMIT, SUBMIT_WINDOW_SECONDS)) {
+    return json(
+      { ok: false, error: 'That is a lot of sightings at once — try again in an hour.' },
+      429,
+    );
   }
 
   let form: FormData;

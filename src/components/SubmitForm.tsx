@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { readPhotoMeta } from '../lib/exif';
+import { reverseGeocode } from '../lib/geocode';
 
 interface GeocodeResult {
   lat: string;
@@ -75,30 +76,6 @@ function parseCoords(str: string): { lat: number; lon: number } | null {
 }
 
 /**
- * Turn a coordinate from a photo's EXIF into a human place name, so the form can
- * show "Cascade Falls Trailhead, …" rather than a bare pair of numbers. Same
- * Nominatim service as the forward search (and the same `connect-src` CSP
- * entry); `zoom=16` asks for roughly neighbourhood/POI granularity instead of a
- * full street address.
- *
- * Returns null on any failure — the coordinates are already good enough to
- * submit, so a naming miss must never cost the submitter their location.
- */
-async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
-  try {
-    const url =
-      'https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&lat=' +
-      encodeURIComponent(String(lat)) + '&lon=' + encodeURIComponent(String(lon));
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { display_name?: string };
-    return data.display_name?.trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Downscale + re-encode the photo to JPEG in the browser so we don't upload a
  * 4–5 MB phone original. If the browser can't decode it (HEIC on non-Apple),
  * fall back to the original file untouched (server caps the size).
@@ -138,6 +115,11 @@ export default function SubmitForm() {
   // the UI can say so and offer one click to take it back.
   const [autoLocated, setAutoLocated] = useState(false);
   const [readingExif, setReadingExif] = useState(false);
+  // The place the current coordinates actually resolve to. Shown in Lat/Lng mode
+  // as a sanity check: a dropped minus sign is invisible in the numbers but
+  // glaring once the answer reads "…, Russia".
+  const [coordPlace, setCoordPlace] = useState<string | null>(null);
+  const [namingCoords, setNamingCoords] = useState(false);
 
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
@@ -203,6 +185,35 @@ export default function SubmitForm() {
       ctrl.abort();
     };
   }, [query, location, mode]);
+
+  // Name whatever coordinates are currently set, in Lat/Lng mode only. Address
+  // mode already shows a name (the one they picked), and the EXIF path does its
+  // own lookup — this covers the case nothing else does: coordinates typed or
+  // pasted by hand, which is exactly where a sign gets dropped.
+  useEffect(() => {
+    if (mode !== 'coords' || !location) {
+      setCoordPlace(null);
+      setNamingCoords(false);
+      return;
+    }
+    const { lat, lon } = location;
+    let cancelled = false;
+    const ctrl = new AbortController();
+    setCoordPlace(null);
+    setNamingCoords(true);
+    // Debounced: they may still be typing, and Nominatim asks for ≤1 req/sec.
+    const timer = setTimeout(async () => {
+      const place = await reverseGeocode(lat, lon, ctrl.signal);
+      if (cancelled) return;
+      setCoordPlace(place);
+      setNamingCoords(false);
+    }, 700);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [mode, location]);
 
   // Revoke the object URL when the preview changes / unmounts.
   useEffect(() => {
@@ -634,6 +645,28 @@ export default function SubmitForm() {
         {location && (
           <p style={{ color: 'var(--muted)', fontSize: '0.78rem', marginTop: '0.4rem' }}>
             📍 {location.lat.toFixed(4)}, {location.lon.toFixed(4)}
+          </p>
+        )}
+        {/* What those numbers actually point at. The check that catches a
+            dropped minus sign, which no one ever spots in the digits. */}
+        {mode === 'coords' && location && (namingCoords || coordPlace) && (
+          <p
+            style={{
+              color: 'var(--muted)',
+              fontSize: '0.78rem',
+              marginTop: '0.2rem',
+              lineHeight: 1.45,
+            }}
+          >
+            {namingCoords ? (
+              'Checking where that is…'
+            ) : (
+              <>
+                That’s <strong style={{ color: 'var(--text)' }}>{coordPlace}</strong>. Not right?
+                Check the minus signs — south is negative, and so is everywhere west of Greenwich
+                (all of the Americas).
+              </>
+            )}
           </p>
         )}
         {mode === 'coords' && !location && (latInput || lonInput) && (

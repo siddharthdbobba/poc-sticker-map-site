@@ -12,7 +12,9 @@
  *
  * SETUP (first time)
  *   1. Spreadsheet → Extensions → Apps Script. Paste this file.
- *   2. Set TOKEN below to a long random string (must equal SHEET_WEBHOOK_TOKEN).
+ *   2. Project Settings (gear) → Script Properties → add SHEET_WEBHOOK_TOKEN,
+ *      set to a long random string (must equal the Worker's SHEET_WEBHOOK_TOKEN
+ *      secret). Do NOT put the token in this file — it lives in a public repo.
  *   3. The status column's DROPDOWN must list every status this file writes:
  *        active | pending | rejected | review
  *      The sheet uses a Table + data validation, and Tables ENFORCE the column
@@ -25,7 +27,7 @@
  *        Execute as: Me   |   Who has access: Anyone
  *      Copy the ".../exec" URL. Set the Worker secrets:
  *        wrangler secret put SHEET_WEBHOOK_URL    → the /exec URL
- *        wrangler secret put SHEET_WEBHOOK_TOKEN  → the SAME value as TOKEN
+ *        wrangler secret put SHEET_WEBHOOK_TOKEN  → the SAME value as the property
  *      The reviewer agent reuses these same two values (see its .env).
  *
  * UPDATING (after you edit this file)
@@ -35,7 +37,31 @@
  *   live submit flow, whose secret still points at the old one. Same URL, new version.
  */
 
-const TOKEN = 'CHANGE_ME_to_a_long_random_string'; // must equal SHEET_WEBHOOK_TOKEN
+/**
+ * The shared token, read from Script Properties — NOT from a constant in this
+ * file. Why: this file is in a public git repo, so a real token pasted here
+ * would be published. The previous version kept a `CHANGE_ME_…` placeholder in
+ * the repo and the real value only in the deployed copy, which meant the file
+ * you are reading and the code actually running had silently diverged, with no
+ * way to tell them apart. A property keeps the secret out of the repo AND keeps
+ * the repo copy deployable as-is.
+ *
+ * Set it once: Apps Script editor → Project Settings (gear) → Script Properties
+ * → Add script property → name SHEET_WEBHOOK_TOKEN, value = the same string as
+ * the Worker's SHEET_WEBHOOK_TOKEN secret.
+ *
+ * LEGACY_TOKEN is the migration path: an existing deployment that still has its
+ * token inline keeps working until the property is set. Leave it empty in the
+ * repo and delete this fallback once the property is in place.
+ */
+const LEGACY_TOKEN = ''; // deprecated — set the SHEET_WEBHOOK_TOKEN script property instead
+
+function getToken() {
+  const fromProperties = PropertiesService.getScriptProperties().getProperty(
+    'SHEET_WEBHOOK_TOKEN',
+  );
+  return fromProperties || LEGACY_TOKEN;
+}
 const SHEET_NAME = ''; // '' = first tab (the published gid=0 tab the map reads)
 
 const ALLOWED_STATUSES = ['active', 'rejected', 'review', 'pending'];
@@ -43,7 +69,10 @@ const ALLOWED_STATUSES = ['active', 'rejected', 'review', 'pending'];
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
-    if (body.token !== TOKEN) {
+    const token = getToken();
+    // Fail closed on an unconfigured deployment: with no token set, an empty
+    // body.token would otherwise match and authorise every caller.
+    if (!token || body.token !== token) {
       return jsonOut({ ok: false, error: 'forbidden' });
     }
 
