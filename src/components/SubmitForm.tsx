@@ -3,6 +3,7 @@
  *
  * Client island for /submit. Lets anyone contribute a sticker sighting:
  *   - pick a photo (downscaled in-browser before upload; HEIC falls back to original)
+ *     → its EXIF GPS/date pre-fill the location and date (see readPhotoMeta below)
  *   - type a place → geocoded via Nominatim (client-side, light use only)
  *   - add a date / story / their name
  * Posts multipart form-data to /api/submit, which stores the photo in R2 and
@@ -12,6 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { readPhotoMeta } from '../lib/exif';
 
 interface GeocodeResult {
   lat: string;
@@ -73,6 +75,30 @@ function parseCoords(str: string): { lat: number; lon: number } | null {
 }
 
 /**
+ * Turn a coordinate from a photo's EXIF into a human place name, so the form can
+ * show "Cascade Falls Trailhead, …" rather than a bare pair of numbers. Same
+ * Nominatim service as the forward search (and the same `connect-src` CSP
+ * entry); `zoom=16` asks for roughly neighbourhood/POI granularity instead of a
+ * full street address.
+ *
+ * Returns null on any failure — the coordinates are already good enough to
+ * submit, so a naming miss must never cost the submitter their location.
+ */
+async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
+  try {
+    const url =
+      'https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&lat=' +
+      encodeURIComponent(String(lat)) + '&lon=' + encodeURIComponent(String(lon));
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { display_name?: string };
+    return data.display_name?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Downscale + re-encode the photo to JPEG in the browser so we don't upload a
  * 4–5 MB phone original. If the browser can't decode it (HEIC on non-Apple),
  * fall back to the original file untouched (server caps the size).
@@ -108,6 +134,10 @@ export default function SubmitForm() {
   const [processed, setProcessed] = useState<{ blob: Blob; name: string } | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  // Set when the location currently in the form came from the photo's EXIF, so
+  // the UI can say so and offer one click to take it back.
+  const [autoLocated, setAutoLocated] = useState(false);
+  const [readingExif, setReadingExif] = useState(false);
 
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
@@ -120,6 +150,9 @@ export default function SubmitForm() {
   const [name, setName] = useState('');
   const [placedBy, setPlacedBy] = useState('');
   const [date, setDate] = useState(todayISO());
+  // Today's date is a guess, not an answer — EXIF may overwrite it. Once the
+  // submitter types a date themselves it is an answer, and stays put.
+  const [dateTouched, setDateTouched] = useState(false);
   const [description, setDescription] = useState('');
 
   const [status, setStatus] = useState<Status>('idle');
@@ -130,6 +163,17 @@ export default function SubmitForm() {
 
   const previewRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Bumped on every photo choice. The reverse geocode is slow (seconds, on a
+  // shared public service), so a submitter who swaps photos mid-lookup would
+  // otherwise get the FIRST photo's place name written over the second photo's
+  // location. Whoever finishes late checks this and stands down.
+  const photoToken = useRef(0);
+  // True once the submitter has set the location *themselves* (picked a search
+  // result, or typed a valid coordinate pair). A photo's EXIF may fill an empty
+  // form and may replace what an earlier photo guessed, but it must never
+  // overwrite a person's own answer. A ref, not state: applyPhotoMeta reads this
+  // after an await, where a captured state value would be a stale render's.
+  const userSetLocation = useRef(false);
 
   // Debounced client-side geocoding (Nominatim), address mode only. Light use only.
   useEffect(() => {
@@ -180,6 +224,11 @@ export default function SubmitForm() {
       return;
     }
     setProcessing(true);
+    const token = ++photoToken.current;
+    // Read EXIF from the ORIGINAL file, before processImage: the canvas
+    // re-encode that downscales the photo drops every metadata block with it,
+    // so this is the only moment the GPS fix still exists.
+    const meta = await readPhotoMeta(file);
     const result = await processImage(file);
     if (result.blob.size > MAX_BYTES) {
       setProcessing(false);
@@ -190,9 +239,63 @@ export default function SubmitForm() {
     setProcessed(result);
     setPreview(URL.createObjectURL(result.blob));
     setProcessing(false);
+    applyPhotoMeta(meta, token);
+  }
+
+  /**
+   * Pre-fill the form from a photo's EXIF. Deliberately additive: anything the
+   * submitter has already answered wins, because they were there and the camera
+   * only knows where it was standing. So the location is filled only when the
+   * form has none, and the date only while it is still the untouched default.
+   */
+  async function applyPhotoMeta(meta: Awaited<ReturnType<typeof readPhotoMeta>>, token: number) {
+    if (meta.takenOn && !dateTouched && meta.takenOn <= todayISO()) setDate(meta.takenOn);
+
+    const { latitude, longitude } = meta;
+    if (latitude === undefined || longitude === undefined) return;
+    if (userSetLocation.current) return; // they told us where — don't second-guess it
+
+    // Coordinates first, name second: the fix alone is enough to submit, so
+    // commit it before the network call that might not come back.
+    const coords = { lat: latitude, lon: longitude };
+    setLatInput(String(latitude));
+    setLonInput(String(longitude));
+    setLocation({ ...coords, name: `${latitude}, ${longitude}` });
+    setMode('coords');
+    setAutoLocated(true);
+    setSuggestions([]);
+
+    setReadingExif(true);
+    const placeName = await reverseGeocode(latitude, longitude);
+    if (token !== photoToken.current) return; // a newer photo owns the form now
+    setReadingExif(false);
+    if (!placeName) return; // the coordinates stand on their own
+
+    // Naming succeeded — show it the way a picked search result looks. Matching
+    // `query` to `location.name` is what keeps the search effect from firing.
+    setMode('address');
+    setLocation({ ...coords, name: placeName });
+    setQuery(placeName);
+    setName((current) => current.trim() || placeName.split(',')[0].trim());
+  }
+
+  /** Drop an EXIF-derived location and hand the fields back to the submitter. */
+  function clearAutoLocation() {
+    photoToken.current++; // orphan any in-flight lookup so it can't refill this
+    userSetLocation.current = false;
+    setReadingExif(false);
+    setAutoLocated(false);
+    setLocation(null);
+    setQuery('');
+    setLatInput('');
+    setLonInput('');
+    setSuggestions([]);
   }
 
   function pickSuggestion(s: GeocodeResult) {
+    photoToken.current++; // a chosen place outranks any lookup still in flight
+    userSetLocation.current = true;
+    setAutoLocated(false);
     const lat = parseFloat(s.lat);
     const lon = parseFloat(s.lon);
     setLocation({ lat, lon, name: s.display_name });
@@ -203,9 +306,13 @@ export default function SubmitForm() {
 
   // Lat/Lng entered manually → unified into `location` when both parse to a valid pair.
   function onCoordChange(nextLat: string, nextLon: string) {
+    photoToken.current++;
+    setAutoLocated(false);
     setLatInput(nextLat);
     setLonInput(nextLon);
     const coords = parseCoords(`${nextLat}, ${nextLon}`);
+    // Half-typed coordinates aren't an answer yet, so a photo may still fill in.
+    userSetLocation.current = coords !== null;
     setLocation(
       coords ? { lat: coords.lat, lon: coords.lon, name: `${coords.lat}, ${coords.lon}` } : null,
     );
@@ -228,6 +335,9 @@ export default function SubmitForm() {
   function switchMode(next: 'address' | 'coords') {
     if (next === mode) return;
     setMode(next);
+    photoToken.current++;
+    userSetLocation.current = false;
+    setAutoLocated(false);
     setLocation(null);
     setSuggestions([]);
     setQuery('');
@@ -286,6 +396,11 @@ export default function SubmitForm() {
     setName('');
     setPlacedBy('');
     setDate(todayISO());
+    setDateTouched(false);
+    photoToken.current++;
+    userSetLocation.current = false;
+    setAutoLocated(false);
+    setReadingExif(false);
     setDescription('');
     setError('');
     setConfirmNoPhoto(false);
@@ -326,6 +441,9 @@ export default function SubmitForm() {
         <label style={labelStyle} htmlFor="photo">
           Photo of the sticker <span style={{ fontWeight: 400 }}>(optional)</span>
         </label>
+        <p style={{ color: 'var(--muted)', fontSize: '0.75rem', margin: '0 0 0.4rem' }}>
+          If it was taken with location on, we’ll fill in where it was for you.
+        </p>
         <input
           id="photo"
           ref={fileInputRef}
@@ -336,7 +454,7 @@ export default function SubmitForm() {
         />
         {processing && (
           <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '0.4rem' }}>
-            Optimizing photo…
+            Reading photo…
           </p>
         )}
         {preview && !processing && (
@@ -358,6 +476,49 @@ export default function SubmitForm() {
       {/* Location — Address (default) or Lat / Lng */}
       <div style={{ ...fieldStyle, position: 'relative' }}>
         <label style={labelStyle}>Where is it?</label>
+
+        {/* Filled from the photo's EXIF — say so, and make it one click to undo. */}
+        {autoLocated && (
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              alignItems: 'center',
+              background: 'var(--accent-soft)',
+              border: '1px solid var(--accent-border)',
+              borderRadius: '8px',
+              padding: '0.5rem 0.7rem',
+              marginBottom: '0.6rem',
+              fontSize: '0.8rem',
+              color: 'var(--text)',
+              lineHeight: 1.45,
+            }}
+          >
+            <span aria-hidden="true">📷</span>
+            <span style={{ flex: 1 }}>
+              {readingExif
+                ? 'Location filled in from your photo — looking up the place name…'
+                : 'Location filled in from your photo. Not right? Set it yourself.'}
+            </span>
+            <button
+              type="button"
+              onClick={clearAutoLocation}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                color: 'var(--text)',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                padding: '0.25rem 0.5rem',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
 
         {/* Mode toggle — Address first, then Lat / Lng */}
         <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
@@ -396,6 +557,8 @@ export default function SubmitForm() {
               autoComplete="off"
               onChange={(e) => {
                 setQuery(e.target.value);
+                setAutoLocated(false);
+                userSetLocation.current = false;
                 if (location) setLocation(null);
               }}
               style={inputStyle}
@@ -539,7 +702,10 @@ export default function SubmitForm() {
             type="date"
             value={date}
             max={todayISO()}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              setDateTouched(true);
+              setDate(e.target.value);
+            }}
             style={inputStyle}
           />
         </div>

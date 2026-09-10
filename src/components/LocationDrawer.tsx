@@ -11,6 +11,7 @@
  */
 
 import type { StickerLocation } from '../lib/stickers';
+import Directions from './Directions';
 
 interface LocationDrawerProps {
   location: StickerLocation | null;
@@ -233,6 +234,15 @@ export default function LocationDrawer({
             {location.description}
           </p>
         )}
+
+        {/* Coordinates + directions. Always present: every row on the map has a
+            valid lat/lng (parseCSV drops the ones that don't). */}
+        <Directions
+          latitude={location.latitude}
+          longitude={location.longitude}
+          name={location.name}
+          compact
+        />
       </div>
     </div>
   );

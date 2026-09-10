@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import type { StickerLocation } from '../lib/stickers';
+import Directions from './Directions';
 
 interface LocationModalProps {
   location: StickerLocation | null;
@@ -141,6 +142,11 @@ export default function LocationModal({
               {location.description}
             </p>
           )}
+          <Directions
+            latitude={location.latitude}
+            longitude={location.longitude}
+            name={location.name}
+          />
         </div>
       </div>
 

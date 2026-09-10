@@ -10,7 +10,8 @@ Built with **Astro** + **Leaflet** (`react-leaflet`), styled to match the club s
 
 - A single React island (`StickerMapApp`, mounted `client:only="react"`) fetches the
   published Google Sheet **CSV** in the browser, parses it, and renders a Leaflet map
-  with a marker per sighting. Click a marker for the photo + story.
+  with a marker per sighting. Click a marker for the photo + story, the exact
+  coordinates, and one-tap **Google Maps / Apple Maps directions**.
 - Basemap follows the theme (no API key): the **OpenStreetMap** standard street map in
   light, **CARTO Dark Matter** in dark — same OSM data. The surrounding UI follows the
   theme as well.
@@ -32,7 +33,10 @@ Sheet columns (row 1 headers): `name, latitude, longitude, date, description, ph
 ## Submissions (upload page)
 
 `/submit` lets anyone contribute a sighting: it downscales the photo in-browser,
-geocodes a typed place via Nominatim, and POSTs to `/api/submit`. That Worker route
+geocodes a typed place via Nominatim, and POSTs to `/api/submit`. If the photo
+carries a GPS fix in its EXIF, the location and date are **filled in
+automatically** (and reverse-geocoded to a place name) — the submitter can clear
+or override it. That Worker route
 stores the photo in **R2** and appends a row to the data tab via a small **Apps Script
 web app** (`apps-script/Code.gs`) with `status = "pending"`. The map hides pending
 rows — you approve a sighting by changing its **`status`** cell to `active`.
