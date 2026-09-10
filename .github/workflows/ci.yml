@@ -1,0 +1,48 @@
+# Type-check, test and build every push and pull request.
+#
+# This does NOT deploy. Cloudflare Workers Builds is connected to this repo and
+# deploys `main` on its own (~40s after a push); duplicating that here would
+# race it. What CI adds is the signal Workers Builds does not give you: it runs
+# `astro check`, which Workers Builds does not, so a type error shows up as a
+# red check next to the green deploy instead of silently shipping.
+#
+# The deploy is still gated on the tests, but by `npm run build` itself — see
+# package.json, where `build` is `npm test && astro build`. That way the gate
+# travels with the build command wherever it runs, including inside Workers
+# Builds, rather than depending on a setting in a dashboard.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches .nvmrc and the >=22.12.0 engines constraint. The test runner
+          # relies on node:test plus --experimental-strip-types, both built in
+          # from 22.12 — there is no test framework to install.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Real type-checking. `astro build` does not type-check, so without this
+      # a `const n: number = "string"` ships happily.
+      - name: Type-check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      # Catches the build-breaking class astro check does not: bad imports,
+      # module resolution, syntax.
+      - name: Build
+        run: npm run build
