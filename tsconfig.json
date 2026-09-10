@@ -6,7 +6,13 @@
     "./worker-configuration.d.ts"
   ],
   "exclude": [
-    "dist"
+    "dist",
+    // examples/ is a standalone sample with its own package.json and its own
+    // dependencies (@anthropic-ai/claude-agent-sdk, dotenv, zod). It is not
+    // part of the site build, and its deps are not installed by a root
+    // `npm ci` — so type-checking it from here only passes on a machine that
+    // happens to have run `npm install` inside it, and fails everywhere else.
+    "examples"
   ],
   "compilerOptions": {
     "jsx": "react-jsx",
