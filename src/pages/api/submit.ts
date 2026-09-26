@@ -130,7 +130,16 @@ export const POST: APIRoute = async ({ request }) => {
   // ── Rate limit ───────────────────────────────────────────────────────────
   // Before parsing the body, so a flood costs us a KV read rather than an 8 MB
   // multipart parse.
-  if (await overRateLimit('submit', clientIp(request), env.SESSION, SUBMIT_LIMIT, SUBMIT_WINDOW_SECONDS)) {
+  // First the Workers rate-limit binding (atomic, burst-proof: 3/min/IP), then
+  // the KV counter for the longer hourly window.
+  const ip = clientIp(request);
+  if (env.SUBMIT_LIMITER && ip) {
+    const { success } = await env.SUBMIT_LIMITER.limit({ key: `submit:${ip}` });
+    if (!success) {
+      return json({ ok: false, error: 'Slow down a little and try again in a minute.' }, 429);
+    }
+  }
+  if (await overRateLimit('submit', ip, env.SESSION, SUBMIT_LIMIT, SUBMIT_WINDOW_SECONDS)) {
     return json(
       { ok: false, error: 'That is a lot of sightings at once — try again in an hour.' },
       429,
@@ -142,6 +151,29 @@ export const POST: APIRoute = async ({ request }) => {
     form = await request.formData();
   } catch {
     return json({ ok: false, error: 'Expected a multipart form submission.' }, 400);
+  }
+
+  // ── Turnstile (bot check) ────────────────────────────────────────────────
+  // Enforced once TURNSTILE_SECRET_KEY is set. Stops distributed bots that a
+  // per-IP limit cannot.
+  if (env.TURNSTILE_SECRET_KEY) {
+    const token = String(form.get('cf-turnstile-response') ?? '');
+    if (!token) return json({ ok: false, error: 'Please complete the bot check.' }, 400);
+    const verify = new FormData();
+    verify.append('secret', env.TURNSTILE_SECRET_KEY);
+    verify.append('response', token);
+    if (ip) verify.append('remoteip', ip);
+    let passed = false;
+    try {
+      const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        body: verify,
+      });
+      passed = ((await r.json()) as { success?: boolean }).success === true;
+    } catch {
+      passed = false;
+    }
+    if (!passed) return json({ ok: false, error: 'Bot check failed. Please try again.' }, 403);
   }
 
   const photo = form.get('photo');

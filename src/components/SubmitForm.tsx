@@ -147,6 +147,25 @@ export default function SubmitForm() {
   // otherwise get the FIRST photo's place name written over the second photo's
   // location. Whoever finishes late checks this and stands down.
   const photoToken = useRef(0);
+  // Cloudflare Turnstile widget (only when PUBLIC_TURNSTILE_SITE_KEY is set).
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileId = useRef<string | null>(null);
+  useEffect(() => {
+    const siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY;
+    if (!siteKey || !turnstileRef.current) return;
+    const w = window as unknown as { turnstile?: { render: (el: HTMLElement, o: object) => string } };
+    const render = () => {
+      if (w.turnstile && turnstileRef.current && !turnstileId.current) {
+        turnstileId.current = w.turnstile.render(turnstileRef.current, { sitekey: siteKey });
+      }
+    };
+    if (w.turnstile) return render();
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    s.async = true;
+    s.onload = render;
+    document.head.appendChild(s);
+  }, []);
   // True once the submitter has set the location *themselves* (picked a search
   // result, or typed a valid coordinate pair). A photo's EXIF may fill an empty
   // form and may replace what an earlier photo guessed, but it must never
@@ -421,6 +440,8 @@ export default function SubmitForm() {
     fd.append('date', date);
     fd.append('description', description.trim());
     fd.append('placedBy', placedBy.trim());
+    const ts = (window as unknown as { turnstile?: { getResponse: (id?: string) => string } }).turnstile;
+    if (ts && turnstileId.current) fd.append('cf-turnstile-response', ts.getResponse(turnstileId.current) ?? '');
 
     try {
       const res = await fetch('/api/submit', { method: 'POST', body: fd });
@@ -829,6 +850,8 @@ export default function SubmitForm() {
       {error && (
         <p style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '0.9rem' }}>{error}</p>
       )}
+
+      <div ref={turnstileRef} style={{ marginBottom: '0.75rem' }} />
 
       <button
         type="submit"

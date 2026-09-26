@@ -12,6 +12,8 @@ declare namespace Cloudflare {
     SHEET_WEBHOOK_TOKEN: string;
     /** Cloudflare Turnstile secret key (Phase 2 — optional until configured). */
     TURNSTILE_SECRET_KEY?: string;
+    /** Workers rate-limit binding for /api/submit (wrangler.jsonc `ratelimits`). */
+    SUBMIT_LIMITER?: RateLimit;
     /**
      * Google Maps API key, used at runtime by /api/streetview for BOTH the
      * server-side metadata coverage check AND (returned to the client) the embed

@@ -49,6 +49,12 @@ export interface PendingSubmission {
    * not public either way) but sort last, so they don't block a fresh review.
    */
   deferred?: boolean;
+  /**
+   * Sheet row number once the approve step has appended it (-1 if the script
+   * did not report one). Set before the status flip, so a retry after a
+   * partial failure flips this row instead of appending a duplicate.
+   */
+  appendedRow?: number;
 }
 
 /** Store a submission. Overwrites by id, which only happens on a defer. */

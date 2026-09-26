@@ -125,16 +125,25 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
-    const appended = await callSheet({
-      name: item.name,
-      latitude: item.latitude,
-      longitude: item.longitude,
-      date: item.date,
-      description: item.description,
-      photo_url: item.photoUrl,
-      placed_by: item.placedBy,
-    });
-    if (!appended.ok) throw new Error('append rejected');
+    // Idempotency: if an earlier attempt already appended this row, skip the
+    // append and only retry the flip. Without this, a failed flip followed by a
+    // retry added a second copy of the sighting to the sheet.
+    let rowNumber = item.appendedRow;
+    if (rowNumber === undefined) {
+      const appended = await callSheet({
+        name: item.name,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        date: item.date,
+        description: item.description,
+        photo_url: item.photoUrl,
+        placed_by: item.placedBy,
+      });
+      if (!appended.ok) throw new Error('append rejected');
+      rowNumber = appended.row ?? -1;
+      await putPending(env.SESSION, { ...item, appendedRow: rowNumber });
+    }
+    if (rowNumber === -1) rowNumber = undefined;
 
     // Flip the freshly appended row to "active". Identify it by photo_url when
     // there is one — unique, and stable if rows move underneath us.
@@ -144,7 +153,6 @@ export const POST: APIRoute = async ({ request }) => {
     // rather than require a redeploy the fallback asks `listPending` which rows
     // are still pending and takes the last match. Both paths re-check the row is
     // pending before writing, so neither can clobber an already-moderated row.
-    let rowNumber = appended.row;
     if (!item.photoUrl && rowNumber === undefined) {
       const queue = await callSheetRaw({ action: 'listPending' });
       const rows = (queue.pending ?? []).filter(

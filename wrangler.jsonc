@@ -23,6 +23,11 @@
 	"r2_buckets": [
 		{ "binding": "PHOTOS", "bucket_name": "poc-sticker-photos" }
 	],
+	// Atomic per-IP submit limiter (KV counters are eventually consistent and
+	// let bursts through). Period must be 10 or 60 seconds.
+	"ratelimits": [
+		{ "name": "SUBMIT_LIMITER", "namespace_id": "1001", "simple": { "limit": 3, "period": 60 } }
+	],
 	"observability": {
 		"enabled": true
 	}
